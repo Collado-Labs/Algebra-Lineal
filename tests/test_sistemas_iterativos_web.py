@@ -167,7 +167,7 @@ class SistemasIterativosWebTest(SimpleTestCase):
 
     def test_limite_de_iteraciones_muestra_la_ultima_aproximacion(self):
         respuesta = self.resolver(PRACTICA_A, PRACTICA_B, "comparar_iterativos", max_iteraciones="3")
-        self.assertContains(respuesta, "no bajaron ambos de la tolerancia", count=2)
+        self.assertEqual(sum("no bajaron ambos de la tolerancia" in m["mensaje"] for m in respuesta.context["iterativos"]["metodos"]), 2)
         self.assertContains(respuesta, "No converge en 3 iteraciones", count=2)
         self.assertEqual(respuesta.context["iterativos"]["titulo"],
                          "Jacobi no converge en 3 iteraciones; Gauss-Seidel no converge en 3 iteraciones")
@@ -346,7 +346,7 @@ class IterativosDesdeEcuacionesTest(SimpleTestCase):
     def test_ecuaciones_invalidas_o_no_lineales_explican_el_error_junto_al_texto(self):
         for texto, extra, mensaje in (
             ("", {}, "Ingresa un sistema de ecuaciones."),
-            ("10x - y + 2z = 6", {}, "solo se admiten variables x1, x2, ... con coeficientes numéricos"),
+            ("10x - y + 2z = 6", {}, "requieren tantas ecuaciones como incógnitas"),
             ("x1^2 + x2 = 3; x1 + x2 = 1", {}, "eleva una variable a una potencia"),
             ("x1x2 + x2 = 3; x1 + x2 = 1", {}, "multiplica dos variables"),
             ("sin(x1) + x2 = 3; x1 + x2 = 1", {}, "sin(…) no forma parte de una ecuación lineal"),

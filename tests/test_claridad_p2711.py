@@ -157,7 +157,7 @@ class PruebasResultado(SimpleTestCase):
         # La entrada y sus ayudas conservan la sintaxis que se escribe.
         reduccion = self.client.post("/matrices/reduccion/", {"sistema": "x1 - 6 = -x2", "metodo": "gauss"})
         self.assertContains(reduccion, "x1 - 6 = -x2</textarea>")
-        self.assertContains(reduccion, "Usa <code>x1</code>, <code>x2</code>")
+        self.assertContains(reduccion, "Usa <code>x₁</code>, <code>x₂</code>")
         self.assertNotRegex(seccion_resultado(reduccion), r"(?<![A-Za-z])x[0-9]")
 
     def test_ui52_reduccion_dice_resultado_y_no_repite_el_kicker(self):

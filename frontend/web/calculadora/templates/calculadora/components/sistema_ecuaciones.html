@@ -2,11 +2,10 @@
 <div class="field-group">
     {{ form.sistema.label_tag }}
     <p id="sistema-ayuda" class="field-help">
-        Usa <code>x1</code>, <code>x2</code>, … como incógnitas, con <code>x</code> minúscula.
-        Puedes escribir enteros, fracciones como <code>1/2</code> y decimales con punto.
+        Usa <code>x₁</code>, <code>x₂</code>, … (también <code>x1</code>, <code>x2</code>) o <code>x</code>, <code>y</code>, <code>z</code>, <code>w</code>. Elige una notación para todo el sistema.
+        Puedes escribir enteros, fracciones como <code>1/2</code> o <code>(1/2)x₁</code> y decimales con punto.
         Separa las ecuaciones con <code>;</code> o con saltos de línea.
         Ejemplo: <code>2x1 - x2 = 3; x1 + 4x2 = 7</code>.
-        No uses <code>x/y/z</code>, <code>X1</code>, coma decimal ni un <code>;</code> vacío al final.
         Puedes dejar términos a ambos lados del <code>=</code>, como <code>x1 - 6 = -x2</code>.
     </p>
     {{ form.sistema }}

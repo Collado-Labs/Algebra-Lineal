@@ -113,3 +113,9 @@ def numeric_results(content):
     # Solo preserva HTML de templates, ya autoescapado; los atributos nuevos
     # y el texto sustituido pasan por format_html, nunca por interpolación HTML.
     return mark_safe("".join(parser.partes))
+
+
+@register.filter
+def cambio_iterativo(fila):
+    """Medida de la tabla. Las resoluciones históricas guardan solo el cambio absoluto."""
+    return fila.get("medida_visible", fila.get("cambio")) if isinstance(fila, dict) else None

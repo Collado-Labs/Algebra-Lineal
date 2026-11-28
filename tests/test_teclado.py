@@ -39,12 +39,12 @@ STATIC = RAIZ / "frontend" / "web" / "calculadora" / "static" / "calculadora"
 
 # Cada herramienta declara solo los perfiles que usa; el registro no cambia por pantalla.
 HERRAMIENTAS = {
-    "/metodos-numericos/metodos-cerrados/biseccion/": {"funcion-real"},
-    "/metodos-numericos/metodos-cerrados/regla-falsa/": {"funcion-real"},
+    "/metodos-numericos/metodos-cerrados/biseccion/": {"funcion-real", "tolerancia"},
+    "/metodos-numericos/metodos-cerrados/regla-falsa/": {"funcion-real", "tolerancia"},
     "/matrices/reduccion/": {"sistema", "numerico"},
     "/matrices/operaciones/": {"numerico", "expresion", "lineal"},
     "/matrices/ecuaciones/": {"numerico"},
-    "/metodos-numericos/metodos-iterativos/": {"sistema", "numerico"},  # v0.20.2: también ecuaciones.
+    "/metodos-numericos/metodos-iterativos/": {"sistema", "numerico", "tolerancia"},
     "/matrices/inversa/": {"numerico"},
     "/matrices/determinantes/": {"numerico"},
     "/bases/conversion/": {"base-2", "base-8", "base-10", "base-16"},
@@ -52,8 +52,8 @@ HERRAMIENTAS = {
 
 # Contrato HTTP de cada formulario: el teclado no agrega controles de envío.
 CONTROLES = {
-    "/metodos-numericos/metodos-cerrados/biseccion/": {"csrfmiddlewaretoken", "funcion", "a", "b", "precision", "max_iteraciones"},
-    "/metodos-numericos/metodos-cerrados/regla-falsa/": {"csrfmiddlewaretoken", "funcion", "a", "b", "precision", "max_iteraciones"},
+    "/metodos-numericos/metodos-cerrados/biseccion/": {"csrfmiddlewaretoken", "funcion", "a", "b", "precision", "max_iteraciones", "criterio"},
+    "/metodos-numericos/metodos-cerrados/regla-falsa/": {"csrfmiddlewaretoken", "funcion", "a", "b", "precision", "max_iteraciones", "criterio"},
     "/matrices/reduccion/": {
         "csrfmiddlewaretoken", "ecuaciones", "metodo", "mostrar", "mostrar_definido", "sistema",
         "tipo_entrada", "variables",
@@ -74,7 +74,7 @@ CONTROLES = {
     "/metodos-numericos/metodos-iterativos/": {
         "ajustar", "celda_A_0_0", "celda_A_0_1", "celda_A_1_0", "celda_A_1_1", "celda_b_0_0",
         "celda_b_1_0", "columnas", "csrfmiddlewaretoken", "filas", "metodo",
-        "inicial_iterativo", "tolerancia_iterativa", "max_iteraciones",
+        "inicial_iterativo", "tolerancia_iterativa", "max_iteraciones", "criterio",
         "tipo_entrada", "sistema",  # v0.20.2: el sistema también se escribe como ecuaciones.
     },
     # «confirmacion» solo aparece en el aviso de un cálculo largo, nunca en el GET.
@@ -237,7 +237,7 @@ class PruebasRegistro(unittest.TestCase):
 
     def test_el_registro_tiene_perfiles_completos_sin_duplicados(self):
         self.assertEqual(set(PERFILES), {"sistema", "numerico", "expresion", "lineal", "base-2", "base-8", "base-10", "base-16",
-                                       "literal-conjuntos", "relacion-conjuntos", "regiones-conjuntos", "funcion-real"})
+                                       "literal-conjuntos", "relacion-conjuntos", "regiones-conjuntos", "funcion-real", "tolerancia"})
         for id_, perfil in PERFILES.items():
             with self.subTest(perfil=id_):
                 self.assertIsInstance(perfil, Perfil)

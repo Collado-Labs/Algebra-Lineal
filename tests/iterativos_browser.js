@@ -173,6 +173,24 @@
             await navegar(frame, () => q(w, "[data-calculo]").click()); w = frame.contentWindow;
             ok(texto(q(w, "#results-title")) === "Jacobi converge en 1 iteración" && texto(q(w, ".iterativos-estado")).startsWith("x⁽⁰⁾ ya satisface"), "Inicial exacto");
         }],
+        ["Porcentaje en tabla, sustitución y gráfica con eje del residuo", async (w, frame) => {
+            await navegar(frame, () => { frame.src = RUTA + "?ejemplo=clase"; });
+            w = frame.contentWindow;
+            const tol = q(w, '[name="tolerancia_iterativa"]');
+            tol.value = "0.01%";
+            tol.dispatchEvent(new w.Event("input", { bubbles: true }));
+            ok(q(w, '[name="criterio"]').value === "porcentual", "Criterio elegido por el sufijo");
+            await navegar(frame, () => q(w, "[data-calculo]").click());
+            w = frame.contentWindow;
+            const a = articulo(w, "jacobi"), grafica = a.querySelector('[data-grafica="error"]');
+            await esperar(() => grafica.data?.length === 4, "Dos medidas y dos umbrales");
+            const datos = JSON.parse(q(w, "#datos-iterativos").textContent);
+            ok(datos.resultado.tolerancia === 0.0001, "Proporción en el resultado estructurado");
+            ok(grafica.data[0].y[0] === 100 && grafica.data[2].y[0] === .01, "Cambio y umbral en porcentaje");
+            ok(grafica.data[1].yaxis === "y2" && grafica.data[3].y[0] === .0001, "Residuo con escala propia");
+            ok(a.querySelector('[data-medida="cambio"]').textContent.includes("%"), "Porcentaje en la lectura del paso");
+            ok(a.querySelector('tr[data-iteracion="1"]').textContent.includes("%"), "Porcentaje en tabla");
+        }],
         ["Temas, estilos y anchos sin desborde; la k sobrevive al cambio de tema", async (w, frame) => {
             w = await resolver(frame);
             const raiz = w.document.documentElement, a = articulo(w, "jacobi"), g = a.querySelector('[data-grafica="variables"]');
