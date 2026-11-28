@@ -19,11 +19,9 @@ from frontend.web.calculadora.resoluciones.almacen import almacen  # noqa: E402
 def vaciar():
     cuaderno = almacen()
     cuaderno.eliminar([fila["id"] for fila in cuaderno.listar()])
-    for ejercicio in cuaderno.ejercicios():
-        cuaderno.disolver_ejercicio(ejercicio["id"])
+    cuaderno.eliminar_ejercicios([ejercicio["id"] for ejercicio in cuaderno.ejercicios()])
     for proyecto in cuaderno.proyectos():
-        cuaderno.eliminar_proyecto(proyecto["id"])
-    cuaderno.activar(None)
+        cuaderno.eliminar_proyecto(proyecto["id"])  # también deja de ser el destino
 
 
 def pruebas(environ, start_response):

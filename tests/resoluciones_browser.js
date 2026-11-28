@@ -16,12 +16,18 @@
         const casilla = q(w, selector);
         if (casilla.checked !== estado) casilla.click();
     };
-    // Espera la página siguiente del iframe tras una acción (clic, envío, enlace).
+    // Espera la página siguiente del iframe tras una acción (clic, envío, enlace) o, en el cuaderno,
+    // la actualización sin recarga que hace resoluciones.js (evento «cuaderno:actualizado»).
     const navegar = (frame, accion) => new Promise((resolve, reject) => {
         const limite = setTimeout(() => reject(new Error("La página no respondió")), 15000);
-        frame.onload = () => { clearTimeout(limite); resolve(frame.contentWindow); };
+        const listo = () => { clearTimeout(limite); frame.onload = null; resolve(frame.contentWindow); };
+        frame.onload = listo;
+        frame.contentWindow.document.getElementById("contenido")?.addEventListener("cuaderno:actualizado", listo, {once: true});
         accion(frame.contentWindow);
     });
+    const anuncio = w => texto(w, ".cuaderno-anuncio") || texto(w, ".cuaderno-hecho");
+    const esperar = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const numeros = w => todos(w, ".ejercicio .ejercicio-numero").map(n => n.textContent.trim());
     const abrir = (frame, url) => navegar(frame, w => { w.location.href = url; });
     const calcularInversa = async (frame, filas) => {
         let w = await abrir(frame, "/matrices/inversa/");
@@ -38,9 +44,9 @@
     };
     const proyectoDePrueba = async (hasta = 12) => {
         await fetch("/resoluciones/");  // cookie CSRF
-        await enviar("/resoluciones/", {accion: "crear_proyecto", nombre: "Banco de Álgebra Lineal", objetivo: 64});
+        await enviar("/resoluciones/", {accion: "crear_proyecto", nombre: "Práctica de matrices", objetivo: 64});
         const id = (await (await fetch("/__pruebas/proyectos")).json())[0];
-        await enviar("/resoluciones/", {accion: "crear_ejercicios", proyecto: id, desde: 1, hasta});
+        await enviar("/resoluciones/", {accion: "crear_ejercicios", proyecto: id, numeros: `1-${hasta}`});
         return id;
     };
 
@@ -50,20 +56,21 @@
             const aviso = q(w, "#resolucion-aviso");
             igual(aviso.dataset.estado, "guardada");
             igual(aviso.previousElementSibling, q(w, "[data-resultado] .results-heading"), "posición del aviso:");
-            cierto(texto(w, "#resolucion-aviso").includes("Anotada en tu cuaderno como Matriz inversa · 2×2"), texto(w, "#resolucion-aviso"));
+            cierto(texto(w, "#resolucion-aviso").startsWith("Guardada en tu cuaderno."), texto(w, "#resolucion-aviso"));
+            cierto(!texto(w, "#resolucion-aviso").includes("Desde tu cuaderno"), "recién guardada no es una consulta");
             w = await navegar(frame, w => q(w, "[data-calculo]").click());
             igual(q(w, "#resolucion-aviso").dataset.estado, "existente", "recalcular lo mismo:");
         }],
-        ["Añadir a un ejercicio desde la herramienta vuelve a la resolución, ya agrupada", {}, async (w, frame) => {
+        ["Añadir a un ejercicio desde la herramienta vuelve a la resolución y dice dónde quedó", {}, async (w, frame) => {
             w = await calcularInversa(frame, [[1, 2], [3, 4]]);
             q(w, ".resolucion-agrupar > summary").click();
             cierto(q(w, ".resolucion-agrupar .cuaderno-nombre-nuevo").getClientRects().length, "nombre visible para un ejercicio nuevo");
             valor(w, '.resolucion-agrupar [name="nombre_ejercicio"]', "Tarea 3");
             w = await navegar(frame, w => q(w, ".resolucion-agrupar-form button").click());
             igual(new URL(w.location.href).searchParams.has("resolucion"), true);
-            igual(q(w, "#resolucion-aviso").dataset.estado, "abierta");
-            cierto(texto(w, "#resolucion-aviso").includes("· Tarea 3"), texto(w, "#resolucion-aviso"));
-            igual(texto(w, ".resolucion-agrupar > summary"), "Llevar a otro ejercicio", "ya agrupada:");
+            igual(q(w, "#resolucion-aviso").dataset.estado, "anadida");
+            cierto(texto(w, "#resolucion-aviso").startsWith("Añadida a Tarea 3"), texto(w, "#resolucion-aviso"));
+            igual(texto(w, ".resolucion-agrupar > summary"), "Añadir a un ejercicio", "otra referencia, no mover:");
         }],
         ["Reabrir desde el cuaderno muestra datos y resultado; editar lo marca desactualizado", {}, async (w, frame) => {
             w = await calcularInversa(frame, [[4, 7], [2, 6]]);
@@ -81,7 +88,7 @@
             w = await abrir(frame, "/resoluciones/");
             const barra = q(w, "[data-seleccion]");
             igual(barra.hasAttribute("data-activa"), false);
-            w.document.querySelector('[data-requiere-seleccion][value="agrupar"]').click();
+            w.document.querySelector('[data-requiere-seleccion][value="anadir"]').click();
             cierto(texto(w, "[data-seleccion-cuenta]").includes("Primero marca"), "aviso sin selección");
             const dia = q(w, ".hoja-dia [data-marcar-grupo]");
             igual(dia.hidden, false);
@@ -92,8 +99,8 @@
             todos(w, '.hoja-dia input[name="ids"]')[0].click();
             igual(dia.indeterminate, true);
             dia.click();
-            w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="agrupar"]').click());
-            cierto(texto(w, ".cuaderno-hecho").startsWith("Llevaste 2 resoluciones a «Ejercicio 1»"), texto(w, ".cuaderno-hecho"));
+            w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="anadir"]').click());
+            cierto(anuncio(w).startsWith("Añadiste 2 resoluciones a «Ejercicio 1»"), anuncio(w));
             igual(todos(w, "ol.hoja-pasos > .hoja-entrada").length, 2);
             cierto(w.getComputedStyle(q(w, "ol.hoja-pasos .hoja-nombre"), "::before").content.includes("counter(paso"), "pasos numerados");
         }],
@@ -104,7 +111,7 @@
             const campo = q(w, '.hoja-entrada [name="nombre"]');
             valor(w, '.hoja-entrada [name="nombre"]', "Inversa de la tarea");
             w = await navegar(frame, () => campo.form.requestSubmit());
-            igual(texto(w, ".cuaderno-hecho"), "Cambiaste el nombre de la resolución.");
+            igual(anuncio(w), "Cambiaste el nombre de la resolución.");
             igual(texto(w, ".hoja-nombre"), "Inversa de la tarea");
         }],
         ["Eliminar pide confirmación y Cancelar no borra nada", {}, async (w, frame) => {
@@ -112,13 +119,16 @@
             w = await abrir(frame, "/resoluciones/");
             marcar(w, '.hoja-entrada input[name="ids"]');
             w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="eliminar"]').click());
-            cierto(texto(w, ".confirmation").includes("¿Eliminar esta resolución?"), texto(w, ".confirmation"));
-            w = await navegar(frame, w => q(w, ".confirmation a.btn").click());
+            const dialogo = q(w, "dialog.cuaderno-dialogo");
+            cierto(dialogo?.open, "la confirmación se abre en un diálogo, sin perder el sitio");
+            cierto(texto(w, ".confirmation").includes("¿Eliminar esta resolución del cuaderno?"), texto(w, ".confirmation"));
+            q(w, ".confirmation [data-cancelar]").click();
+            cierto(!q(w, "dialog.cuaderno-dialogo")?.open, "Cancelar cierra el diálogo");
             igual(todos(w, ".hoja-entrada").length, 1);
             marcar(w, '.hoja-entrada input[name="ids"]');
             w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="eliminar"]').click());
             w = await navegar(frame, w => q(w, '.confirmation [value="eliminar_confirmado"]').click());
-            igual(texto(w, ".cuaderno-hecho"), "Eliminaste 1 resolución del cuaderno.");
+            igual(anuncio(w), "Eliminaste 1 resolución del cuaderno.");
             cierto(q(w, ".cuaderno-blanco"), "vuelve el cuaderno en blanco");
         }],
         ["Sin JavaScript: la barra se ve siempre y reunir funciona con el formulario", {sinJS: true}, async (w, frame) => {
@@ -133,8 +143,8 @@
             igual(getComputedStyle(q(w, "[data-seleccion]")).display, "flex");
             igual(q(w, "[data-marcar-grupo]").hidden, true);
             marcar(w, '.hoja-entrada input[name="ids"]');
-            w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="agrupar"]').click());
-            cierto(texto(w, ".cuaderno-hecho").startsWith("Llevaste 1 resolución"), texto(w, ".cuaderno-hecho"));
+            w = await navegar(frame, w => q(w, '[data-requiere-seleccion][value="anadir"]').click());
+            cierto(texto(w, ".cuaderno-hecho").startsWith("Añadiste 1 resolución"), texto(w, ".cuaderno-hecho"));
         }],
     ];
 
@@ -152,14 +162,14 @@
     casos.push(["Proyecto: crear, preparar ejercicios, trabajar en uno y añadir con un clic tras calcular", {}, async (w, frame) => {
         w = await abrir(frame, "/resoluciones/");
         q(w, ".cuaderno-nuevo > summary").click();
-        valor(w, '.cuaderno-nuevo-form [name="nombre"]', "Banco de Álgebra Lineal");
+        valor(w, '.cuaderno-nuevo-form [name="nombre"]', "Práctica de matrices");
         valor(w, '.cuaderno-nuevo-form [name="objetivo"]', 64);
         w = await navegar(frame, w => q(w, ".cuaderno-nuevo-form [type=submit]").click());
-        cierto(texto(w, ".cuaderno-hecho").startsWith("Creaste el proyecto"), texto(w, ".cuaderno-hecho"));
+        cierto(anuncio(w).startsWith("Creaste el proyecto"), anuncio(w));
         cierto(q(w, "#proyecto-activo"), "el proyecto nuevo queda activo");
         const preparar = todos(w, ".cuaderno-nuevo").find(d => d.textContent.includes("Preparar varios"));
         igual(preparar.open, true, "en blanco, «Preparar varios» se ofrece abierto:");
-        valor(w, '[name="hasta"]', 12);
+        valor(w, '#preparar [name="numeros"]', "1-12");
         w = await navegar(frame, () => preparar.querySelector("form").requestSubmit());
         igual(todos(w, ".mapa-celda").length, 64, "12 creados + 52 por preparar:");
         igual(todos(w, '.mapa-celda[data-estado="por-crear"]').length, 52);
@@ -170,19 +180,21 @@
         const anadir = q(w, ".resolucion-anadir button");
         cierto(anadir && texto(w, ".resolucion-anadir button").startsWith("Añadir a Ej. 3"), "botón de un clic");
         w = await navegar(frame, () => anadir.click());
-        igual(q(w, "#resolucion-aviso").dataset.estado, "abierta");
-        cierto(texto(w, "#resolucion-aviso").includes("Ejercicio 3 de Banco de Álgebra Lineal"), texto(w, "#resolucion-aviso"));
-        // Cambiar de ejercicio desde el indicador vuelve a la misma resolución.
+        igual(q(w, "#resolucion-aviso").dataset.estado, "anadida");
+        cierto(texto(w, "#resolucion-aviso").startsWith("Añadida a Ej. 3 · Práctica de matrices"), texto(w, "#resolucion-aviso"));
+        // Cambiar de ejercicio desde el menú (buscando su número) vuelve a la misma resolución.
         q(w, ".proyecto-activo-resumen").click();
-        const selector = q(w, '.proyecto-activo-form [name="ejercicio"]');
-        selector.value = [...selector.options].find(o => o.textContent === "Ejercicio 5").value;
-        w = await navegar(frame, () => selector.form.requestSubmit());
+        const buscar = q(w, "[data-buscar-ejercicio] input");
+        cierto(!q(w, "[data-buscar-ejercicio]").hidden, "la búsqueda aparece con muchos ejercicios");
+        valor(w, "[data-buscar-ejercicio] input", "5");
+        igual(todos(w, "[data-lista-ejercicios] li").filter(li => !li.hidden).map(li => li.textContent.trim()), ["Ejercicio 5"]);
+        w = await navegar(frame, () => buscar.dispatchEvent(new w.KeyboardEvent("keydown", {key: "Enter", bubbles: true})));
         igual(texto(w, ".proyecto-activo-ejercicio"), "Ej. 5");
         igual(new URL(w.location.href).searchParams.has("resolucion"), true, "vuelve a la resolución:");
         w = await abrir(frame, "/resoluciones/proyectos/" + new URL(q(w, ".proyecto-activo-titulo a").href).pathname.split("/")[3] + "/");
         igual(q(w, '.mapa-celda[data-estado="resuelto"] [aria-hidden]').textContent.trim(), "3");
     }]);
-    casos.push(["Proyecto: dejar fuera del documento sin borrar, reordenar y ordenar por número", {}, async (w, frame) => {
+    casos.push(["Proyecto: dejar fuera del documento sin borrar, reordenar con teclado y arrastre, ordenar por número", {}, async (w, frame) => {
         const id = await proyectoDePrueba(4);
         w = await abrir(frame, `/resoluciones/proyectos/${id}/`);
         igual(texto(w, ".proyecto-borrador-cifras").startsWith("4 ejercicios"), true, texto(w, ".proyecto-borrador-cifras"));
@@ -191,11 +203,93 @@
         igual(todos(w, ".ejercicio")[1].querySelector(".incluir").getAttribute("aria-pressed"), "false");
         cierto(texto(w, ".proyecto-borrador-cifras").startsWith("3 ejercicios"), texto(w, ".proyecto-borrador-cifras"));
         igual(todos(w, ".ejercicio").length, 4, "excluir no borra:");
-        w = await navegar(frame, w => todos(w, ".ejercicio")[0].querySelector('.hoja-orden[aria-label^="Bajar"]').click());
-        igual(todos(w, ".ejercicio-numero").map(n => n.textContent.trim()), ["2", "1", "3", "4"]);
-        igual(new URL(w.location.href).pathname, `/resoluciones/proyectos/${id}/`, "vuelve al proyecto:");
+        // Teclado: el asa con el foco y ↓ baja un puesto; el foco sigue en su asa.
+        const asa = todos(w, ".ejercicio [data-asa]")[0];
+        cierto(!asa.hidden, "el asa aparece con JavaScript");
+        asa.focus();
+        w = await navegar(frame, () => asa.dispatchEvent(new w.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true})));
+        igual(numeros(w), ["2", "1", "3", "4"]);
+        igual(w.document.activeElement?.dataset.clave, todos(w, ".ejercicio [data-asa]")[1].dataset.clave, "foco en el asa movida:");
+        igual(new URL(w.location.href).pathname, `/resoluciones/proyectos/${id}/`, "sigue en el proyecto:");
+        // Arrastre con el puntero: el 2 se suelta bajo el 4.
+        const origen = todos(w, ".ejercicio [data-asa]")[0];
+        const destino = todos(w, ".ejercicio")[3].getBoundingClientRect();
+        const puntero = (tipo, y) => origen.dispatchEvent(new w.PointerEvent(tipo, {bubbles: true, button: 0, pointerId: 7, clientX: destino.left + 40, clientY: y}));
+        w = await navegar(frame, () => {
+            puntero("pointerdown", origen.getBoundingClientRect().top + 5);
+            puntero("pointermove", destino.top + 10);
+            puntero("pointermove", destino.bottom - 4);
+            puntero("pointerup", destino.bottom - 4);
+        });
+        igual(numeros(w), ["1", "3", "4", "2"]);
         w = await navegar(frame, w => q(w, '[form="ordenar-proyecto"]').click());
-        igual(todos(w, ".ejercicio-numero").map(n => n.textContent.trim()), ["1", "2", "3", "4"]);
+        igual(numeros(w), ["1", "2", "3", "4"]);
+    }]);
+    casos.push(["Organizar por rangos: vista previa, aplicar en una operación y confirmar al eliminar", {}, async (w, frame) => {
+        const id = await proyectoDePrueba(64);
+        await enviar(`/resoluciones/proyectos/${id}/`, {accion: "crear_seccion", proyecto: id, nombre: "Sistemas"});
+        w = await abrir(frame, `/resoluciones/proyectos/${id}/`);
+        valor(w, '#lote [name="numeros"]', "20-29, 35, 40-44");
+        await esperar(700);
+        igual(texto(w, "[data-lote-vista]"), "16 ejercicios: 20-29, 35, 40-44.");
+        igual(todos(w, ".mapa-celda[data-elegido]").length, 16, "el mapa muestra la selección:");
+        igual(texto(w, "[data-aplicar]"), "Aplicar a 16");
+        valor(w, '#lote [name="numeros"]', "22-3, 99");
+        await esperar(700);
+        cierto(texto(w, "[data-lote-vista]").includes("al revés") && texto(w, "[data-lote-vista]").includes("99"), texto(w, "[data-lote-vista]"));
+        igual(q(w, "[data-aplicar]").getAttribute("aria-disabled"), "true");
+        valor(w, '#lote [name="numeros"]', "3-22");
+        await esperar(700);
+        // Mayús + clic suma un tramo marcado en la lista.
+        const marcas = todos(w, "[data-marca-ejercicio]");
+        marcas[59].click();
+        marcas[61].dispatchEvent(new w.MouseEvent("click", {bubbles: true, shiftKey: true}));
+        igual(marcas.slice(59, 62).map(m => m.checked), [true, true, true]);
+        igual(texto(w, "[data-aplicar]"), "Aplicar a 23");
+        const seccion = q(w, '#lote [name="destino_seccion"]');
+        seccion.value = [...seccion.options].find(o => o.textContent === "Sistemas").value;
+        w = await navegar(frame, w => q(w, "[data-aplicar]").click());
+        igual(anuncio(w), "Moviste 23 ejercicios a «Sistemas».");
+        igual(todos(w, "#" + q(w, ".proyecto-grupo[data-id]").id + " .ejercicio").length, 23);
+        igual(q(w, '#lote [name="numeros"]').value, "", "la selección aplicada se limpia:");
+        // Eliminar siempre confirma en un diálogo con los ejercicios elegidos.
+        valor(w, '#lote [name="numeros"]', "63-64");
+        await esperar(700);
+        q(w, '#lote [name="operacion"]').value = "eliminar";
+        w = await navegar(frame, w => q(w, "[data-aplicar]").click());
+        cierto(q(w, "dialog.cuaderno-dialogo")?.open, "diálogo de confirmación");
+        igual(texto(w, ".proyecto-lote-lista"), "Ej. 63Ej. 64");
+        w = await navegar(frame, w => q(w, '.proyecto-lote [name="confirmado_eliminar"]').click());
+        igual(todos(w, ".ejercicio").length, 62);
+    }]);
+    casos.push(["Contexto: excluir una resolución del ejercicio 56 no devuelve arriba y los controles no se mueven", {}, async (w, frame) => {
+        const id = await proyectoDePrueba(64);
+        await calcularInversa(frame, [[2, 1], [7, 4]]);
+        w = frame.contentWindow;
+        const ejercicio = (await (await fetch(`/resoluciones/proyectos/${id}/seleccion/?numeros=56`)).json()).ids[0];
+        await enviar("/resoluciones/", {accion: "anadir", ids: q(w, '.resolucion-anadir [name="ids"], .resolucion-agrupar [name="ids"]').value, ejercicio});
+        w = await abrir(frame, `/resoluciones/proyectos/${id}/`);
+        const fila = q(w, `#ejercicio-${ejercicio}`);
+        fila.querySelector("details.ejercicio-detalle").open = true;
+        fila.scrollIntoView({block: "center"});
+        const alto = fila.getBoundingClientRect().top;
+        cierto(w.scrollY > 2000, `lejos del principio: ${w.scrollY}`);
+        w = await navegar(frame, () => fila.querySelector(".hoja-entrada .incluir").click());
+        const despues = q(w, `#ejercicio-${ejercicio}`);
+        cierto(Math.abs(despues.getBoundingClientRect().top - alto) < 3, `misma posición: ${alto} → ${despues.getBoundingClientRect().top}`);
+        igual(despues.querySelector("details.ejercicio-detalle").open, true, "sigue desplegado:");
+        igual(despues.querySelector(".hoja-entrada .incluir").getAttribute("aria-pressed"), "false");
+        cierto(texto(w, ".proyecto-borrador-cifras").includes("0 resoluciones"), texto(w, ".proyecto-borrador-cifras"));
+        // Desplegar Editar o Preparar varios no mueve los controles de su fila ni de la barra.
+        const editar = despues.querySelector(".hoja-controles > .hoja-editar > summary");
+        const incluir = despues.querySelector(".hoja-controles > .incluir");
+        const antes = [editar, incluir].map(e => JSON.stringify(e.getBoundingClientRect()));
+        editar.click();
+        igual([editar, incluir].map(e => JSON.stringify(e.getBoundingClientRect())), antes, "Editar abierto:");
+        const preparar = q(w, "#preparar > summary");
+        const botones = todos(w, ".proyecto-herramientas-botones > *").map(e => JSON.stringify(e.getBoundingClientRect()));
+        preparar.click();
+        igual(todos(w, ".proyecto-herramientas-botones > *").map(e => JSON.stringify(e.getBoundingClientRect())), botones, "Preparar varios abierto:");
     }]);
 
     // Coherencia en los cinco estilos y los dos temas: la cabecera no se solapa y el cuaderno no se desborda.
@@ -237,6 +331,10 @@
         q(w, ".proyecto-activo-resumen").click();
         const panel = q(w, ".proyecto-activo-panel").getBoundingClientRect();
         cierto(panel.left >= 0 && panel.right <= w.innerWidth, "panel del proyecto activo dentro de la pantalla");
+        q(w, ".proyecto-activo-resumen").click();
+        q(w, ".ejercicio .hoja-editar > summary").click();
+        const editar = q(w, ".ejercicio .hoja-editar-cuerpo").getBoundingClientRect();
+        cierto(editar.left >= 0 && editar.right <= w.innerWidth && editar.bottom <= w.innerHeight, "Editar se abre dentro de la pantalla");
     }]);
     casos.push(["Móvil (390 px): filtros, hoja y barra caben sin desbordar", {ancho: 390}, async (w, frame) => {
         await calcularInversa(frame, [[1, 3], [2, 7]]);
