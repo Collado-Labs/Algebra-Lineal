@@ -288,6 +288,10 @@ necesita capturas, ni el DOM, ni recalcular.
   **excluir en el ejercicio 56 sin volver arriba** (misma posición, desplegado y foco) y
   controles estables al abrir *Editar* o *Preparar varios*, los cinco estilos en claro y
   oscuro, cabecera de 481 a 1600 px y móvil (paneles dentro de la pantalla).
+- WebView2 real (`desktop.py` con `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` y CDP): excluir
+  en el ejercicio 55 sin moverse de sitio, Organizar a una sección nueva, mover con el
+  teclado, trabajar en un ejercicio; cerrar y reabrir la app conserva destino, proyectos
+  abiertos con su ejercicio, orden, secciones y exclusiones.
 - Migración real: una copia de un cuaderno v2 de prueba (proyecto de 64 ejercicios, tres
   resoluciones, una excluida, Ej. 20 activo) y un cuaderno con las 15 rutas generado con
   el código anterior pasan a v3 con documentos idénticos byte a byte.
@@ -304,17 +308,9 @@ necesita capturas, ni el DOM, ni recalcular.
 
 ![Editar como hoja inferior a 390 px](capturas/resoluciones/proyecto-movil.jpg)
 
-![Proyecto en los cinco estilos, claro y oscuro](capturas/resoluciones/estilos-proyecto.jpg)
+![Proyecto en WebView2 real tras reiniciar la app: destino, proyectos abiertos y selección](capturas/resoluciones/webview2-proyecto.jpg)
 
-![Proyecto en WebView2 tras reiniciar la app](capturas/resoluciones/webview2-proyecto.jpg)
-
-![Cuaderno en los cinco estilos, claro y oscuro](capturas/resoluciones/estilos-cuaderno.jpg)
-
-![Cuaderno en blanco](capturas/resoluciones/estilos-blanco.jpg)
-
-![Cuaderno a 390 px](capturas/resoluciones/estilos-movil.jpg)
-
-![Resolución reabierta en WebView2 tras reiniciar la app](capturas/resoluciones/webview2-reabierta.jpg)
+![El cuaderno: proyectos, sueltas y la barra «Añadir a»](capturas/resoluciones/cuaderno.jpg)
 
 ## Limitaciones conocidas
 
