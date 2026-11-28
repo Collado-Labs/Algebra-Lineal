@@ -9,7 +9,10 @@ from django import forms
 from backend.parser_sistemas import analizar_sistema, convertir_a_numero
 from backend.sistemas_iterativos import ITERACIONES_MAXIMAS, ITERACIONES_PREDETERMINADAS, METODOS, TOLERANCIA
 
+from backend.tolerancias import ABSOLUTO, leer_tolerancia
+
 from .forms import SistemaForm
+from .forms_raices import campo_criterio
 from .forms_ecuaciones import SistemaMatricialForm
 from .servicios_iterativos import COMPARAR_ITERATIVOS
 
@@ -35,9 +38,10 @@ class SistemasIterativosForm(SistemaMatricialForm):
         label="Vector inicial", required=False, max_length=2100,
         widget=forms.TextInput(attrs={"class": "field-input", "aria-describedby": "ayuda-inicial-iterativo"}),
     )
+    criterio = campo_criterio()
     tolerancia_iterativa = forms.CharField(
-        label="Tolerancia", required=False, initial=str(float(TOLERANCIA)), max_length=210,
-        widget=forms.TextInput(attrs={"class": "field-input", "inputmode": "decimal"}),
+        label="Tolerancia", required=False, initial=str(float(TOLERANCIA)), max_length=210, strip=False,
+        widget=forms.TextInput(attrs={"class": "field-input", "data-tolerancia": "", "aria-describedby": "ayuda-tolerancia-iterativa"}),
     )
     max_iteraciones = forms.CharField(
         label="Máximo de iteraciones", required=False, initial=ITERACIONES_PREDETERMINADAS, max_length=12,
@@ -100,12 +104,11 @@ class SistemasIterativosForm(SistemaMatricialForm):
             except ValueError as error:
                 self.add_error("inicial_iterativo", str(error))
 
-        tolerancia = TOLERANCIA
-        if datos["tolerancia_iterativa"]:
+        original = datos.get("tolerancia_iterativa", "")
+        tolerancia, criterio = TOLERANCIA, datos.get("criterio") or ABSOLUTO
+        if "tolerancia_iterativa" in datos and "criterio" in datos:
             try:
-                tolerancia = convertir_a_numero(datos["tolerancia_iterativa"], limitar_entrada=True)
-                if tolerancia <= 0:
-                    raise ValueError("La tolerancia debe ser positiva.")
+                tolerancia, criterio = leer_tolerancia(original, criterio, predeterminada=TOLERANCIA, admitir_fraccion=True)
             except ValueError as error:
                 self.add_error("tolerancia_iterativa", str(error))
 
@@ -118,4 +121,5 @@ class SistemasIterativosForm(SistemaMatricialForm):
             except ValueError:
                 self.add_error("max_iteraciones", f"Escribe un entero de 1 a {ITERACIONES_MAXIMAS}.")
 
-        return {"inicial": inicial or None, "tolerancia": tolerancia, "max_iteraciones": limite}
+        return {"inicial": inicial or None, "tolerancia": tolerancia, "max_iteraciones": limite,
+                "criterio": criterio, "tolerancia_original": original, "sistema_original": self.data.get("sistema", "") if datos.get("tipo_entrada") == "sistema" else ""}

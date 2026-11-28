@@ -16,6 +16,8 @@ el resumen, la lectura detallada y la verificación propios.{% endcomment %}
         <div class="raices-fila">
             <div class="field-group raices-funcion" data-perfil="funcion-real">
                 {{ form.funcion.label_tag }}{{ form.funcion }}{{ form.funcion.errors }}
+                <div id="raices-vista-matematica" class="field-help raices-vista-matematica"{% if not datos_raices.mathml %} hidden{% endif %}>{{ datos_raices|vista_funcion }}</div>
+                <p id="raices-aviso-notacion" class="field-help"{% if not datos_raices.aviso_notacion %} hidden{% endif %}>{{ datos_raices.aviso_notacion }}</p>
                 {% block bajo_funcion %}{% endblock %}
             </div>
             {% block parametros %}
@@ -24,13 +26,16 @@ el resumen, la lectura detallada y la verificación propios.{% endcomment %}
             {% endblock %}
             <div class="raices-accion"><button type="submit" class="btn btn-primary" data-calculo>{% block accion %}{% endblock %}</button></div>
         </div>
-        <p id="funcion-ayuda" class="field-help">Escribe x², 5x o 2(x+1); también ^ o **. La tecla aⁿ activa o desactiva los dígitos elevados.</p>
+        <p id="funcion-ayuda" class="field-help">Escribe ln(x) + sen(x) = 1.2 o una función. Para exponentes compuestos usa e^(1/x).</p>
         <div class="raices-extras">
             {% block extras %}{% endblock %}
             {% disclosure titulo="Ajustes y funciones admitidas" id="ajustes-raices" %}
                 <div class="raices-campos">
-                    <div class="field-group">{{ form.precision.label_tag }}{{ form.precision }}{{ form.precision.errors }}
-                        <p id="precision-ayuda" class="field-help">{% block ayuda_tolerancia %}{% endblock %}</p>
+                    <div class="field-group" data-perfil="tolerancia">{{ form.precision.label_tag }}{{ form.precision }}{{ form.precision.errors }}
+                        <p id="precision-ayuda" class="field-help">Admite 10⁻⁶, 1e-6 y 0,01%. El signo % selecciona el criterio porcentual. En ese modo, 0.01 equivale a 0.01%.</p>
+                    </div>
+                    <div class="field-group">{{ form.criterio.label_tag }}{{ form.criterio }}{{ form.criterio.errors }}
+                        <p class="field-help">{% block ayuda_tolerancia %}{% endblock %}</p>
                     </div>
                     <div class="field-group">{{ form.max_iteraciones.label_tag }}{{ form.max_iteraciones }}{{ form.max_iteraciones.errors }}</div>
                 </div>
@@ -121,6 +126,10 @@ el resumen, la lectura detallada y la verificación propios.{% endcomment %}
     {% disclosure titulo="Ver desarrollo completo" id="desarrollo-raices" clase="disclosure-procedure" detalle="Fórmula, lectura de cada paso y verificación" %}
         <section class="raices-desarrollo" aria-labelledby="formula-titulo">
             <h4 id="formula-titulo">Fórmula y criterio</h4>
+            {% if datos_raices.miembros %}
+            <p>Restamos el segundo miembro al primero para buscar los ceros de la diferencia.</p>
+            <p class="raices-vista-matematica">{{ datos_raices|vista_funcion }}. Resolvemos f(x) = 0.</p>
+            {% endif %}
             {% block procedimiento %}{% endblock %}
         </section>
         {% if resultado.iteraciones %}
@@ -156,5 +165,7 @@ el resumen, la lectura detallada y la verificación propios.{% endcomment %}
 <script src="{% static 'calculadora/vendor/plotly-locale-es-4.1.2.js' %}" defer></script>
 {% block metodo_js %}{% endblock %}
 <script src="{% static 'calculadora/raices.js' %}" defer></script>
+<script src="{% static 'calculadora/tolerancia.js' %}" defer></script>
+<script src="{% static 'calculadora/pegado_matematico.js' %}" defer></script>
 <script src="{% static 'calculadora/teclado.js' %}" defer></script>
 {% endblock %}

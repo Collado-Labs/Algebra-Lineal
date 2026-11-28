@@ -5,6 +5,8 @@ import re
 
 from backend.derivacion_real import DerivadaReal
 from backend.funciones_reales import FuncionReal
+from backend.metodos_cerrados import TOLERANCIA, validar_tolerancia_raices
+from backend.tolerancias import leer_tolerancia
 from frontend.web.calculadora.forms_raices import BiseccionForm, NewtonRaphsonForm, ReglaFalsaForm, SecanteForm
 from frontend.web.calculadora.servicios_raices import muestrear
 from frontend.web.calculadora.views_raices import _vista_abierta
@@ -42,15 +44,15 @@ def _dialogo(formulario):
             if valor == _punto(preparar_raices(datos, decimal), "x0"):
                 raise ValueError("x₁ debe ser distinto de x₀: la secante necesita dos puntos.")
 
-        def validar_precision(valor, _decimal):
-            if valor is not None and valor <= 0:
-                raise ValueError(f"La {form.magnitud} debe ser positiva.")
+        def validar_precision(texto, _decimal):
+            tolerancia, criterio = leer_tolerancia(texto, predeterminada=TOLERANCIA)
+            validar_tolerancia_raices(tolerancia, criterio, form.magnitud)
 
         validar_punto = {"b": validar_b, "x1": validar_x1}
         return (
             campo(form, "funcion", ayuda="Ejemplos: x^2 - 2, 2x + 1 o sin(x).", verificar=validar_funcion),
             *(campo(form, n, verificar=validar_punto.get(n)) for n in puntos),
-            campo(form, "precision", verificar=validar_precision),
+            campo(form, "precision", ayuda="Admite 10⁻⁶, 1e-6 y 0,01%. El signo % usa el criterio relativo porcentual.", verificar=validar_precision),
             campo(form, "max_iteraciones"),
         )
     return preguntas
@@ -64,7 +66,8 @@ _CLAVES_RAIZ = {"biseccion": "c", "regla-falsa": "xr"}
 
 def preparar_raices(datos, decimal):
     if decimal == ",":
-        return {n: re.sub(r"(?<=[0-9]),(?=[0-9])", ".", v) for n, v in datos.items()}
+        return {n: v if n == "precision" else re.sub(r"(?<=[0-9]),(?=[0-9])", ".", v)
+                for n, v in datos.items()}
     return datos
 
 

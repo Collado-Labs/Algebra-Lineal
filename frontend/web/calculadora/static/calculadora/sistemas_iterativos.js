@@ -6,6 +6,11 @@
     const resultado = document.querySelector("#resultado.iterativos-resultado");
     if (!resultado) return;
     const tolerancia = Number(resultado.dataset.tolerancia);
+    const toleranciaResiduo = Number(resultado.dataset.toleranciaResiduo);
+    const relativo = resultado.dataset.criterio !== "absoluto";
+    const porcentual = resultado.dataset.criterio === "porcentual";
+    const magnitud = resultado.dataset.magnitud;
+    const ejeResiduo = relativo ? "y2" : "y";
     const css = nombre => getComputedStyle(resultado).getPropertyValue(nombre).trim();
     const serie = j => css(`--serie-${j % 10 + 1}`);
     // Forma además de color: las incógnitas se distinguen también sin percibir el tono.
@@ -24,7 +29,7 @@
         });
     }
 
-    function layout(alto, eje) {
+    function layout(alto, { residuo, ...eje }) {
         const rejilla = css("--color-border");
         return {
             height: alto, margin: { t: 8, r: 12, b: 42, l: 58 },
@@ -32,6 +37,8 @@
             font: { family: getComputedStyle(document.body).fontFamily, color: css("--color-text"), size: 12 },
             xaxis: { title: { text: "Iteración k" }, gridcolor: rejilla, zeroline: false, tickformat: "d", rangemode: "tozero" },
             yaxis: { gridcolor: rejilla, zerolinecolor: css("--color-border-strong"), automargin: true, ...eje },
+            ...(residuo ? { yaxis2: { type: "log", exponentformat: "power", nticks: 5, overlaying: "y", side: "right",
+                title: { text: "Residuo ‖r‖∞" }, showgrid: false, automargin: true } } : {}),
             legend: { orientation: "h", x: 0, y: 1, yanchor: "bottom", font: { size: 12 } },
             hovermode: "closest", separators: ". ", dragmode: "zoom",
             // 0: tramo de k − 1 a k (la iteración elegida); 1: x⁽ᵏ⁾.
@@ -64,8 +71,10 @@
     }
 
     // Tolerancia como referencia horizontal con nombre propio en la leyenda.
-    const trazaTolerancia = ultima => ({ x: [0, Math.max(ultima, 1)], y: [tolerancia, tolerancia], type: "scatter", mode: "lines",
-        name: "Tolerancia ε", line: { color: css("--color-muted"), dash: "dash", width: 1.5 }, hoverinfo: "skip" });
+    const trazaTolerancia = (ultima, valor = tolerancia, eje = "y", nombre = "Tolerancia ε") => ({
+        x: [0, Math.max(ultima, 1)], y: [valor, valor], yaxis: eje, type: "scatter", mode: "lines",
+        name: nombre, line: { color: css(eje === "y2" ? "--color-warning" : "--color-muted"),
+            dash: eje === "y2" ? "dot" : "dash", width: 1.5 }, hoverinfo: "skip" });
 
     function iniciar(articulo) {
         const filas = [...articulo.querySelectorAll("tbody tr[data-iteracion]")];
@@ -90,13 +99,14 @@
         ], 300, {});
         const errores = dibujar(articulo.querySelector('[data-grafica="error"]'), () => [
             { x: ks.slice(1), y: ks.slice(1).map(i => positivo(numero(celda(i, n)))), type: "scatter", mode: "lines+markers",
-                name: "Cambio máximo", line: { color: css("--color-brand"), width: 2 }, marker: { size: 5 },
+                name: magnitud, line: { color: css("--color-brand"), width: 2 }, marker: { size: 5 },
                 customdata: ks.slice(1).map(i => leer(celda(i, n))), hovertemplate: "Cambio⁽%{x}⁾ = %{customdata}<extra></extra>" },
             { x: ks, y: ks.map(i => positivo(numero(celda(i, n + 1)))), type: "scatter", mode: "lines+markers",
-                name: "Residuo ‖r‖∞", line: { color: css("--color-warning"), width: 2 }, marker: { size: 5, symbol: "square" },
+                name: "Residuo ‖r‖∞", yaxis: ejeResiduo, line: { color: css("--color-warning"), width: 2 }, marker: { size: 5, symbol: "square" },
                 customdata: ks.map(i => leer(celda(i, n + 1))), hovertemplate: "‖r⁽%{x}⁾‖∞ = %{customdata}<extra></extra>" },
-            trazaTolerancia(ultima),
-        ], 190, { type: "log", exponentformat: "power", title: { text: "escala log" } });
+            trazaTolerancia(ultima, tolerancia, "y", porcentual ? "Tolerancia ε (%)" : "Tolerancia ε"),
+            ...(relativo ? [trazaTolerancia(ultima, toleranciaResiduo, "y2", "Umbral del residuo")] : []),
+        ], 230, { type: "log", exponentformat: "power", title: { text: porcentual ? "%" : "escala log" }, residuo: relativo });
         for (const grafica of [variables, errores]) {
             grafica?.div.on("plotly_click", evento => {
                 const x = evento.points?.[0]?.x;
@@ -177,7 +187,7 @@
         const copiar = articulo.querySelector("[data-copiar-tabla]");
         copiar.hidden = false;
         copiar.querySelector("button").addEventListener("click", async () => {
-            const encabezado = ["k", ...nombres.map(nombre => nombre.normalize("NFKC")), "cambio_maximo", "residuo_infinito"];
+            const encabezado = ["k", ...nombres.map(nombre => nombre.normalize("NFKC")), { absoluto: "cambio_maximo", relativo: "cambio_relativo", porcentual: "cambio_porcentual" }[resultado.dataset.criterio], "residuo_infinito"];
             const datos = filas.map((fila, i) => [String(i), ...[...fila.cells].slice(1).map(td => td.dataset.valor)]);
             const csv = [encabezado, ...datos].map(linea => linea.join(",")).join("\r\n");
             const html = `<table>${[encabezado, ...datos].map(linea => `<tr>${linea.map(v => `<td>${v}</td>`).join("")}</tr>`).join("")}</table>`;
@@ -217,7 +227,7 @@
                 customdata: m.filas.map((_, k) => leer(m.celda(k, m.n + 1))),
                 hovertemplate: "‖r⁽%{x}⁾‖∞ = %{customdata}<extra>%{fullData.name}</extra>",
             })),
-            trazaTolerancia(ultima),
+            trazaTolerancia(ultima, toleranciaResiduo),
         ], 220, { type: "log", exponentformat: "power", title: { text: "‖r‖∞ (log)" } });
         // Las líneas de la k elegida no aplican a dos métodos a la vez.
         if (graficaComparacion) Plotly.relayout(comparacion, { shapes: [] });

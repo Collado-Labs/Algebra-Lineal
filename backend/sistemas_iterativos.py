@@ -8,6 +8,7 @@ from numbers import Rational, Real
 from sys import float_info
 
 from backend.presupuesto_sistemas import validar_dimensiones
+from backend.tolerancias import ABSOLUTO, medida_relativa, validar_criterio
 
 METODOS = (("jacobi", "Jacobi"), ("gauss_seidel", "Gauss-Seidel"))
 TOLERANCIA = Fraction(1, 10_000)
@@ -36,6 +37,7 @@ class Iteracion:
     cambio: float | None
     residuo: tuple[Fraction, ...]
     norma_residuo: Fraction
+    valor_criterio: Fraction | float | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,8 @@ class ResultadoIterativo:
     dominancia: tuple[tuple[Fraction, Fraction], ...]
     despejes: tuple[Despeje, ...]
     iteraciones: tuple[Iteracion, ...]
+    criterio: str = ABSOLUTO
+    tolerancia_residuo: Fraction = TOLERANCIA
 
     @property
     def final(self):
@@ -81,7 +85,7 @@ def _exacto(valor):
     return Fraction(valor) if isinstance(valor, Rational) else Fraction(float(valor))
 
 
-def _registrar(k, a, b, x, cambio=None):
+def _registrar(k, a, b, x, cambio=None, criterio=ABSOLUTO):
     # Se comprueba el vector realmente obtenido contra los coeficientes ingresados.
     x_exacto = tuple(Fraction(xi) for xi in x)
     residuo = tuple(bi - sum(aij * xj for aij, xj in zip(fila, x_exacto))
@@ -89,11 +93,14 @@ def _registrar(k, a, b, x, cambio=None):
     norma = max(abs(ri) for ri in residuo)
     if norma > float_info.max:
         return None
-    return Iteracion(k, tuple(x), cambio, residuo, norma)
+    medida = cambio
+    if criterio != ABSOLUTO and cambio is not None:
+        medida = medida_relativa(Fraction(cambio), max(map(abs, x_exacto)))
+    return Iteracion(k, tuple(x), cambio, residuo, norma, medida)
 
 
 def resolver_iterativo(a, b, metodo, *, inicial=None, tolerancia=TOLERANCIA,
-                       max_iteraciones=ITERACIONES_PREDETERMINADAS):
+                       max_iteraciones=ITERACIONES_PREDETERMINADAS, criterio=ABSOLUTO):
     """Aplica Jacobi o Gauss-Seidel a Ax = b con los despejes en el orden de filas recibido.
 
     Las aproximaciones se calculan en float; el residuo b − Ax⁽ᵏ⁾ se calcula con los coeficientes
@@ -118,7 +125,9 @@ def resolver_iterativo(a, b, metodo, *, inicial=None, tolerancia=TOLERANCIA,
     mensaje_tolerancia = "La tolerancia debe ser un número finito y positivo."
     if _finito(tolerancia, mensaje_tolerancia) <= 0:
         raise ValueError(mensaje_tolerancia)
+    validar_criterio(criterio)
     tolerancia = _exacto(tolerancia)
+    tolerancia_residuo = tolerancia if criterio == ABSOLUTO else TOLERANCIA
 
     a_numerica = tuple(_vector(fila, n) for fila in a)
     b_numerico = _vector(b, n)
@@ -153,16 +162,20 @@ def resolver_iterativo(a, b, metodo, *, inicial=None, tolerancia=TOLERANCIA,
             nuevo[i] = (despeje.independiente - suma) / despeje.diagonal
 
         cambio = max(abs(nuevo[i] - anterior[i]) for i in range(n))
-        fila = (_registrar(k, a_exacta, b_exacto, nuevo, cambio)
+        fila = (_registrar(k, a_exacta, b_exacto, nuevo, cambio, criterio)
                 if all(map(isfinite, (*nuevo, cambio))) else None)
         if fila is None:
             estado = "rango"
             break
         iteraciones.append(fila)
-        if cambio < tolerancia and fila.norma_residuo < tolerancia:
+        if fila.valor_criterio is None:
+            estado = "criterio_indefinido"
+        else:
+            estado = "limite"
+        if fila.valor_criterio is not None and fila.valor_criterio < tolerancia and fila.norma_residuo < tolerancia_residuo:
             estado = "convergio"
             break
         anterior = fila.x
 
     return ResultadoIterativo(metodo, estado, tolerancia, max_iteraciones,
-                              tuple(dominancia), tuple(despejes), tuple(iteraciones))
+                              tuple(dominancia), tuple(despejes), tuple(iteraciones), criterio, tolerancia_residuo)

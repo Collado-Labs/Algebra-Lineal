@@ -149,7 +149,7 @@ class PruebasErroresDelParser(unittest.TestCase):
             parsear_sistema("x0 + x1 = 2")
 
     def test_variable_invalida(self):
-        for texto in ("2y1 + x2 = 3", "x1 + abc = 2", "x = 3"):
+        for texto in ("2y1 + x2 = 3", "x1 + abc = 2"):
             with self.subTest(texto=texto):
                 with self.assertRaises(ValueError):
                     parsear_sistema(texto)
@@ -458,8 +458,7 @@ class PruebasRechazoNoLineal(unittest.TestCase):
             ("x1/2 = 1", "la fracción antes de la variable"),
             ("2(x1 + x2) = 6", "sin paréntesis"),
             ("2^2x1 = 3", "las potencias no forman parte"),
-            ("X1 = 3", "«X1» no es un número ni una variable xN"),
-            ("x1 + y = 3", "«y» no es un número ni una variable xN"),
+            ("x1 + y = 3", "sin mezclar ambas notaciones"),
             ("x1 = test", "«test» no es un número ni una variable xN"),
             ("x1 ++ x2 = 3", "cada + o - debe ir seguido"),
             ("x1 = 2 -", "cada + o - debe ir seguido"),

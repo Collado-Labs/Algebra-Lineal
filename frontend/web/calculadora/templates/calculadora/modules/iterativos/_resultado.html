@@ -5,15 +5,16 @@ tabla: una sola k para las tres (sistemas_iterativos.js). Sin JavaScript se leen
 tabla completa. Los números de máquina usan el filtro `flotante` y numeric_results, así que siguen
 el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
 {% numeric_results %}
-<section id="resultado" data-resultado="vigente" class="results iterativos-resultado" aria-labelledby="results-title" tabindex="-1" data-tolerancia="{{ r.tolerancia|stringformat:'r' }}">
+{% with criterio=r.criterio|default:"absoluto" magnitud=r.magnitud|default:"Cambio máximo" tolerancia=r.tolerancia_visible|default:r.tolerancia umbral_residuo=r.tolerancia_residuo|default:r.tolerancia %}
+<section id="resultado" data-resultado="vigente" class="results iterativos-resultado" aria-labelledby="results-title" tabindex="-1" data-criterio="{{ criterio }}" data-magnitud="{{ magnitud }}" data-tolerancia="{{ tolerancia|stringformat:'r' }}" data-tolerancia-residuo="{{ umbral_residuo|stringformat:'r' }}">
     <header class="results-heading iterativos-cabecera"{% if not r.comparar %} data-estado="{{ r.metodos.0.estado }}"{% endif %} data-tono="{% if r.metodos.0.estado == 'convergio' and r.metodos.1.estado|default:'convergio' == 'convergio' %}exito{% else %}aviso{% endif %}">
         <div class="iterativos-veredicto">
-            <p class="iterativos-condiciones">{% if r.comparar %}Mismas condiciones para ambos: {% endif %}x⁽⁰⁾ = ({% for x in r.inicial %}{{ x|flotante }}{% if not forloop.last %}, {% endif %}{% endfor %}), ε = {{ r.tolerancia|flotante }}, hasta {{ r.limite }} iteraciones.</p>
+            <p class="iterativos-condiciones">{% if r.comparar %}Mismas condiciones para ambos: {% endif %}x⁽⁰⁾ = ({% for x in r.inicial %}{{ x|flotante }}{% if not forloop.last %}, {% endif %}{% endfor %}), ε = {{ tolerancia|flotante }}{% if criterio == "porcentual" %}%{% endif %}, hasta {{ r.limite }} iteraciones.</p>
             <h2 id="results-title">{{ r.titulo }}</h2>
             {% if not r.comparar %}{% with m=r.metodos.0 %}
                 <p class="iterativos-estado">{{ m.mensaje }}</p>
                 <p class="iterativos-solucion"><span class="sr-only">Última aproximación: </span>x⁽{{ m.final.k }}⁾ <span data-relacion>=</span> <span>({% for x in m.final.x %}{{ x|flotante }}{% if not forloop.last %}, {% endif %}{% endfor %})</span></p>
-                {% include "calculadora/modules/iterativos/_criterios.html" with m=m tolerancia=r.tolerancia only %}
+                {% include "calculadora/modules/iterativos/_criterios.html" with m=m criterio=criterio magnitud=magnitud tolerancia=tolerancia umbral_residuo=umbral_residuo only %}
             {% endwith %}{% endif %}
             <p class="iterativos-dominancia" data-dominancia="{% if r.filas_no_dominantes %}no-estricta{% else %}estricta{% endif %}">
                 {% if r.filas_no_dominantes %}<strong>Sin dominancia diagonal estricta</strong> en {% if r.filas_no_dominantes|length == 1 %}la fila{% else %}las filas{% endif %} {{ r.filas_no_dominantes|join:", " }}: la convergencia no está garantizada, aunque puede ocurrir.
@@ -28,12 +29,12 @@ el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
         <h3 id="comparacion-titulo" class="panel-title">Comparación con las mismas condiciones</h3>
         <div class="table-wrap">
             <table class="procedure-table iterativos-tabla-comparacion">
-                <thead><tr><th scope="col">Método</th><th scope="col">Resultado</th><th scope="col">Cambio máximo</th><th scope="col">Residuo ‖r‖∞</th><th scope="col">Última aproximación x⁽ᵏ⁾</th></tr></thead>
+                <thead><tr><th scope="col">Método</th><th scope="col">Resultado</th><th scope="col">{{ magnitud }}</th><th scope="col">Residuo ‖r‖∞</th><th scope="col">Última aproximación x⁽ᵏ⁾</th></tr></thead>
                 <tbody>
                     {% for m in r.metodos %}
                     <tr data-metodo="{{ m.clave }}" data-estado="{{ m.estado }}">
                         <th scope="row"><span class="iterativo-metodo" data-metodo-serie="{{ m.clave }}">{{ m.metodo }}</span></th>
-                        <td class="iterativo-frase">{{ m.frase|capfirst }}</td><td>{{ m.final.cambio|flotante:r.tolerancia }}</td><td>{{ m.final.norma|flotante:r.tolerancia }}</td>
+                        <td class="iterativo-frase">{{ m.frase|capfirst }}</td><td>{{ m.final|cambio_iterativo|flotante:tolerancia }}{% if criterio == "porcentual" and m.final|cambio_iterativo is not None %}%{% endif %}</td><td>{{ m.final.norma|flotante:umbral_residuo }}</td>
                         <td class="iterativo-vector">({% for x in m.final.x %}{{ x|flotante }}{% if not forloop.last %}, {% endif %}{% endfor %})</td>
                     </tr>
                     {% endfor %}
@@ -74,6 +75,7 @@ el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
                 {% else %}
                 <p class="iterativo-regla">Actualización <strong>secuencial</strong>: j &lt; i usa <span class="iterativo-muestra" data-origen="nuevo">x<sup>(<span data-k-nuevo>1</span>)</sup></span> recién calculado; j &gt; i, <span class="iterativo-muestra" data-origen="anterior">x<sup>(<span data-k-anterior>0</span>)</sup></span>.</p>
                 {% endif %}
+                {% if criterio != "absoluto" %}<p class="field-help">{{ magnitud }} = ‖x⁽ᵏ⁾ − x⁽ᵏ⁻¹⁾‖∞ / ‖x⁽ᵏ⁾‖∞{% if criterio == "porcentual" %} × 100%{% endif %}. El residuo cumple su propio umbral de {{ umbral_residuo|flotante }}.</p>{% endif %}
                 <ol class="iterativo-sustituciones" data-orden="{% if m.clave == 'jacobi' %}simultaneo{% else %}secuencial{% endif %}">
                     {% for d in m.despejes %}
                     <li data-fila="{{ d.i }}">
@@ -94,13 +96,13 @@ el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
                     {% endfor %}
                 </ol>
                 <dl class="iterativo-medidas">
-                    <div><dt>Cambio máximo</dt><dd data-medida="cambio">{{ m.filas.1.cambio|flotante }}</dd></div>
+                    <div><dt>{{ magnitud }}</dt><dd data-medida="cambio">{{ m.filas.1|cambio_iterativo|flotante }}{% if criterio == "porcentual" and m.filas.1|cambio_iterativo is not None %}%{% endif %}</dd></div>
                     <div><dt>Residuo ‖b − Ax‖∞</dt><dd data-medida="norma">{{ m.filas.1.norma|flotante }}</dd></div>
                 </dl>
             </div>
             {% endif %}
 
-            <div class="iterativo-grafica iterativo-grafica-secundaria" data-grafica="error" role="img" aria-label="Cambio máximo y residuo de {{ m.metodo }} por iteración, en escala logarítmica, con la tolerancia. Los valores están en la tabla." hidden></div>
+            <div class="iterativo-grafica iterativo-grafica-secundaria" data-grafica="error" role="img" aria-label="{{ magnitud }} y residuo de {{ m.metodo }} por iteración, en escala logarítmica, con la tolerancia. Los valores están en la tabla." hidden></div>
 
             <div class="iterativo-tabla">
                 <div class="iterativo-tabla-acciones" data-copiar-tabla hidden>
@@ -110,13 +112,13 @@ el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
                 <div class="table-wrap iterativo-tabla-marco" role="region" tabindex="0" aria-labelledby="tabla-{{ m.clave }}">
                     <table class="procedure-table">
                         <caption id="tabla-{{ m.clave }}">Iteraciones de {{ m.metodo }}</caption>
-                        <thead><tr><th scope="col">k</th>{% for variable in m.variables %}<th scope="col"><span class="iterativo-x" data-serie="{{ forloop.counter }}">{{ variable }}</span></th>{% endfor %}<th scope="col">Cambio máximo</th><th scope="col">‖r‖∞</th></tr></thead>
+                        <thead><tr><th scope="col">k</th>{% for variable in m.variables %}<th scope="col"><span class="iterativo-x" data-serie="{{ forloop.counter }}">{{ variable }}</span></th>{% endfor %}<th scope="col">{{ magnitud }}</th><th scope="col">‖r‖∞</th></tr></thead>
                         <tbody>
                             {% for fila in m.filas %}
                             <tr data-iteracion="{{ fila.k }}"{% if fila.k == 1 %} aria-current="true"{% elif fila.k == 0 and m.final.k %} data-anterior{% endif %}>
                                 <th scope="row">{{ fila.k }}</th>
                                 {% for x in fila.x %}<td data-valor="{{ x|stringformat:'r' }}">{{ x|flotante }}</td>{% endfor %}
-                                <td data-valor="{% if fila.cambio is not None %}{{ fila.cambio|stringformat:'r' }}{% endif %}">{{ fila.cambio|flotante }}</td>
+                                <td data-valor="{% if fila|cambio_iterativo is not None %}{{ fila|cambio_iterativo|stringformat:'r' }}{% endif %}">{{ fila|cambio_iterativo|flotante }}{% if criterio == "porcentual" and fila|cambio_iterativo is not None %}%{% endif %}</td>
                                 <td data-valor="{{ fila.norma|stringformat:'r' }}">{{ fila.norma|flotante }}</td>
                             </tr>
                             {% endfor %}
@@ -154,4 +156,5 @@ el formato global (Exacto/Decimal) sin recalcular.{% endcomment %}
         </div>
     {% enddisclosure %}
 </section>
+{% endwith %}
 {% endnumeric_results %}

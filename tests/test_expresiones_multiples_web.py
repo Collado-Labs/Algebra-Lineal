@@ -42,6 +42,53 @@ class PruebasExpresionesMultiples(ContextoHTTP):
         self.assertTrue(all(llamada.args[0]["simbolos"] is evaluar.call_args.args[0]["simbolos"]
                             for llamada in evaluar.call_args_list))
 
+    def test_ejercicio_56_pegado_equivale_a_campos_individuales(self):
+        expresiones = ("A + B", "A - C", "A + B + C")
+        esperado = self.client.post(RUTA, datos(expresiones)).context["resultados"]
+        entradas = (
+            ("\n".join(expresiones),),
+            ("; ".join(expresiones),),
+            ("; A + B;;\r\n A - C;\n", "\n;\n", expresiones[2]),
+        )
+        for entrada in entradas:
+            with self.subTest(entrada=entrada):
+                respuesta = self.client.post(RUTA, datos(entrada))
+                self.assertEqual(respuesta.context["resultados"], esperado)
+                self.assertEqual([campo.value() for campo in respuesta.context["form"].expresiones],
+                                 list(expresiones))
+                self.assertIsNone(respuesta.context["resultado"])
+                # El cuaderno guarda el POST original y reconstruye el mismo formulario al reabrir.
+                original = respuesta.wsgi_request.POST
+                self.assertEqual(original["expresion"], entrada[0])
+                repuesta = type(respuesta.context["form"])(original)
+                self.assertTrue(repuesta.is_valid())
+                self.assertEqual([campo.value() for campo in repuesta.expresiones], list(expresiones))
+
+    def test_lote_pegado_aisla_errores_y_respeta_el_tope(self):
+        resultado = self.client.post(RUTA, datos(("A +; A - C\n" + "A" * 401 + "; 1; 2",)))
+        filas = resultado.context["resultados"]
+        self.assertEqual(len(filas), 5)
+        self.assertTrue(filas[0]["error"])
+        self.assertEqual(filas[1]["resultado"]["matriz"][0], ["1", "-2"])
+        self.assertIn("400 caracteres", filas[2]["error"])
+        self.assertEqual(filas[4]["resultado"]["escalar"], "2")
+        with patch(EVALUADOR, side_effect=AssertionError("Calculó más de cinco expresiones")):
+            texto = "1; 2; 3; 4; 5; 6"
+            respuesta = self.client.post(RUTA, datos((texto,)))
+        self.assertContains(respuesta, "hasta 5 expresiones")
+        self.assertEqual(respuesta.context["form"]["expresion"].value(), texto)
+        self.assertFalse(respuesta.context["resultados"])
+
+    def test_lote_pegado_aplica_los_limites_acumulados(self):
+        a = matriz("A", [[1] * 10 for _ in range(10)])
+        nueve = "+".join(["A"] * 9)
+        ocho = "+".join(["A"] * 8)
+        respuesta = self.client.post(RUTA, datos((";".join((nueve, nueve, ocho, "A+A", "1")),), [a]))
+        *primeras, excedida, ultima = respuesta.context["resultados"]
+        self.assertTrue(all(fila["resultado"] for fila in primeras))
+        self.assertIn("2700 entradas", excedida["error"])
+        self.assertEqual(ultima["resultado"]["escalar"], "1")
+
     def test_rectangular_vector_escalar_fracciones_e_igualdad(self):
         operandos = (
             matriz("A", [["1/2", 0, 2], [0, "1/3", 0]]),
@@ -93,7 +140,7 @@ class PruebasExpresionesMultiples(ContextoHTTP):
         self.assertContains(respuesta, 'id="procedimiento"')
 
     def test_subexpresion_se_dirige_al_arbol_de_su_fila(self):
-        respuesta = self.client.post(RUTA, datos(("A+B", "A+B+C"), nodo="1|0.0"))
+        respuesta = self.client.post(RUTA, datos(("A+B; A+B+C",), nodo="1|0.0"))
         primera, segunda = [fila["resultado"] for fila in respuesta.context["resultados"]]
         self.assertFalse(primera["parcial"])
         self.assertTrue(segunda["parcial"])
@@ -108,6 +155,8 @@ class PruebasExpresionesMultiples(ContextoHTTP):
         with patch(EVALUADOR, side_effect=AssertionError("Calculó antes de confirmar")):
             aviso = self.client.post(RUTA, datos(expresiones, [a]))
             firma = aviso.context["confirmacion"]["firma"]
+            pegada = self.client.post(RUTA, datos(("\n; ".join(expresiones),), [a]))
+            self.assertEqual(pegada.context["confirmacion"]["firma"], firma)
             otra = self.client.post(RUTA, datos(expresiones[::-1], [a], confirmacion=firma))
             self.assertNotEqual(otra.context["confirmacion"]["firma"], firma)
         with patch(EVALUADOR, return_value={"texto": "resultado"}) as evaluar:

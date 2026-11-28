@@ -7,9 +7,10 @@ extremos de un intervalo, solo los dos primeros puntos de la recta.
 from fractions import Fraction
 
 from .funciones_reales import finito
-from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA
+from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, validar_tolerancia_raices
 from .resultados_raices import ClasificacionRaices as Clasificacion
 from .resultados_raices import impedimento_paso_abierto
+from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero
 
 # Por debajo de esta fracción de |f| la diferencia f(xₙ) − f(xₙ₋₁) es del orden del redondeo de
 # las evaluaciones (unas miles de ulp): la pendiente de la secante ya no significa nada.
@@ -24,23 +25,22 @@ def _flotante(valor):
         return None
 
 
-def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIONES):
+def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIONES, *, criterio=ABSOLUTO):
     """Itera la secante desde x₀ ≠ x₁ y devuelve un diccionario serializable con la tabla y su conclusión.
 
     `funcion` recibe y devuelve floats; cada corte se calcula con diferencias racionales exactas y
-    solo el resultado se redondea a float. Parámetros inválidos (x₀ = x₁, tolerancia fuera de
-    (0, 0.0001], iteraciones fuera de 1–1000) lanzan ValueError. Converge (`estado` "exacta" o
+    solo el resultado se redondea a float. Parámetros inválidos (x₀ = x₁, tolerancia inválida, iteraciones fuera de 1–1000) lanzan ValueError. Converge (`estado` "exacta" o
     "tolerancia", `convergio=True`) si f(x) = 0 en máquina, o si el cambio |xₙ₊₁ − xₙ| y el residuo
     |f(xₙ₊₁)| no superan la tolerancia y `impedimento_paso_abierto` no objeta el último paso.
     `x`, `fx` y `residuo` se vuelven a evaluar al terminar (None si no hubo evaluación válida).
     `iteraciones` reúne los pasos completos; `intento_final`, el paso interrumpido o None.
     Estados y claves de cada fila: docs/secante.md; clasificaciones: `ClasificacionRaices`.
     """
-    x0, x1, tolerancia = finito(x0), finito(x1), finito(tolerancia)
+    x0, x1 = finito(x0), finito(x1)
     if x0 == x1:
         raise ValueError("x₀ y x₁ deben ser distintos: la secante necesita dos puntos.")
-    if not 0 < tolerancia <= TOLERANCIA:
-        raise ValueError("La tolerancia debe ser positiva y no mayor que 0.0001.")
+    tolerancia = validar_tolerancia_raices(tolerancia, criterio)
+    tolerancia_residuo = tolerancia if criterio == ABSOLUTO else TOLERANCIA
     if type(max_iteraciones) is not int or not 1 <= max_iteraciones <= 1000:
         raise ValueError("El máximo de iteraciones debe ser un entero entre 1 y 1000.")
     x, fx = x1, None
@@ -61,6 +61,8 @@ def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIO
                 "fx": verificado, "x0": x0, "x1": x1,
                 "residuo": abs(verificado) if verificado is not None else None,
                 "tolerancia": tolerancia, "max_iteraciones": max_iteraciones,
+                "criterio": criterio, "tolerancia_residuo": tolerancia_residuo,
+                "valor_criterio": filas[-1]["valor_criterio"] if filas else None,
                 "iteraciones": filas, "intento_final": intento_final, "estado": estado,
                 "convergio": convergio, "mensaje": mensaje,
                 "error_absoluto": filas[-1]["error_absoluto"] if filas else None}
@@ -74,10 +76,10 @@ def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIO
     xa, fa = x0, evaluaciones[0]
     fx = evaluaciones[1]
     if fx == 0:
-        return resultado("exacta", "El punto x₁ ya da f(x₁) = 0 en aritmética de máquina.")
+        return resultado(*motivo_cero(criterio, x, "El punto x₁ ya da f(x₁) = 0 en aritmética de máquina."))
     if fa == 0:
         x, fx = x0, fa
-        return resultado("exacta", "El punto x₀ ya da f(x₀) = 0 en aritmética de máquina.")
+        return resultado(*motivo_cero(criterio, x, "El punto x₀ ya da f(x₀) = 0 en aritmética de máquina."))
     # El estado es la pareja ordenada (xₙ₋₁, xₙ): una abscisa que reaparece con otra compañera
     # define otra recta y puede dar un punto nuevo. Solo una pareja repetida cierra un ciclo.
     parejas_visitadas = {(x0, x1)}
@@ -100,7 +102,8 @@ def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIO
             cambio = finito(abs(Fraction(nuevo) - Fraction(x)))
         except (ValueError, ArithmeticError):
             return resultado("divergencia", "La secante es casi horizontal: su corte con el eje x excede el rango de máquina.")
-        intento_final.update(siguiente=nuevo, error_absoluto=cambio)
+        medida = cambio if criterio == ABSOLUTO else medida_relativa(cambio, nuevo)
+        intento_final.update(siguiente=nuevo, error_absoluto=cambio, valor_criterio=medida)
         try:
             fnuevo = finito(funcion(nuevo))
         except ValueError as error:
@@ -116,16 +119,18 @@ def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIO
         # Se desplazan los dos puntos: xₙ₋₁ ← xₙ y xₙ ← xₙ₊₁.
         anterior, xa, fa, x, fx = xa, x, fx, nuevo, fnuevo
         if fx == 0:
-            return resultado("exacta", "f(x) = 0 en aritmética de máquina.")
+            return resultado(*motivo_cero(criterio, x, "f(x) = 0 en aritmética de máquina."))
         if quieto:
             return resultado("estancamiento", "La máquina repite la aproximación sin obtener cero; no se declara convergencia.")
         if pareja_repetida:
             return resultado("oscilacion", "Se repite una pareja de aproximaciones consecutivas: el método entró en un ciclo sin convergencia.")
         # Un cambio pequeño no basta: el residuo también debe cumplir la tolerancia.
-        if cambio <= tolerancia and abs(fx) <= tolerancia:
+        if medida is not None and medida <= tolerancia and abs(fx) <= tolerancia_residuo:
             impedimento = impedimento_paso_abierto(funcion, anterior, xa, x)
             if impedimento:
                 return resultado(*impedimento)
-            return resultado("tolerancia", "El cambio y el residuo no superan la tolerancia solicitada.")
+            return resultado("tolerancia", "El cambio seleccionado y el residuo cumplen sus tolerancias.")
         parejas_visitadas.add(pareja_siguiente)
+    if medida is None:
+        return resultado("criterio_indefinido", "El cambio relativo queda indefinido; revisa la escala o elige el criterio absoluto.")
     return resultado("limite", "Se alcanzó el máximo de iteraciones sin cumplir el criterio de convergencia; puede haber divergencia u oscilación.")

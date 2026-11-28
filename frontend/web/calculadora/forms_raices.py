@@ -1,9 +1,22 @@
 """Función, intervalo o puntos iniciales y ajustes que comparten los métodos de raíces."""
 
 from django import forms
-from backend.metodos_cerrados import MAX_ITERACIONES, TOLERANCIA
+from backend.tolerancias import ABSOLUTO, PORCENTUAL, RELATIVO, leer_tolerancia
+from backend.metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, validar_tolerancia_raices
 from backend.funciones_reales import FuncionReal
 from .forms_feedback import FormularioConErrores
+
+
+OPCIONES_CRITERIO = (
+    (ABSOLUTO, "Cambio absoluto"),
+    (RELATIVO, "Cambio relativo"),
+    (PORCENTUAL, "Cambio relativo porcentual"),
+)
+
+
+def campo_criterio(opciones=OPCIONES_CRITERIO):
+    return forms.ChoiceField(label="Criterio de parada", choices=opciones, initial=ABSOLUTO,
+                             required=False, widget=forms.Select(attrs={"class": "field-input", "data-criterio-tolerancia": ""}))
 
 
 class RaicesForm(FormularioConErrores):
@@ -17,16 +30,17 @@ class RaicesForm(FormularioConErrores):
         if explorar:
             self.fields["a"].required = self.fields["b"].required = False
 
-    funcion = forms.CharField(label="Función f(x)", max_length=512,
+    funcion = forms.CharField(label="Función o ecuación", max_length=512, strip=False,
                               widget=forms.TextInput(attrs={"class": "field-input", "spellcheck": "false",
                                                             "aria-describedby": "funcion-ayuda"}))
     a = forms.FloatField(label="Extremo a",
                          widget=forms.NumberInput(attrs={"class": "field-input", "step": "any"}))
     b = forms.FloatField(label="Extremo b",
                          widget=forms.NumberInput(attrs={"class": "field-input", "step": "any"}))
-    precision = forms.FloatField(initial=TOLERANCIA, required=False, max_value=TOLERANCIA,
-                                 widget=forms.NumberInput(attrs={"class": "field-input", "step": "any",
-                                                                 "aria-describedby": "precision-ayuda"}))
+    precision = forms.CharField(initial=str(TOLERANCIA), required=False, max_length=210, strip=False,
+                                widget=forms.TextInput(attrs={"class": "field-input", "data-tolerancia": "",
+                                                               "aria-describedby": "precision-ayuda"}))
+    criterio = campo_criterio()
     max_iteraciones = forms.IntegerField(label="Máximo de iteraciones", initial=MAX_ITERACIONES,
                                          min_value=1, max_value=1000, required=False,
                                          widget=forms.NumberInput(attrs={"class": "field-input"}))
@@ -50,10 +64,14 @@ class RaicesForm(FormularioConErrores):
             self.add_error(None, "El envío incluye campos que no forman parte del formulario.")
         if hasattr(self.data, "getlist") and any(len(self.data.getlist(n)) > 1 for n in self.data):
             self.add_error(None, "Envía un único valor por campo; hay campos repetidos.")
-        if datos.get("precision") is None:
-            datos["precision"] = TOLERANCIA
-        if not 0 < datos["precision"] <= TOLERANCIA:
-            self.add_error("precision", f"La {self.magnitud} debe ser positiva y no mayor que 0.0001.")
+        if "precision" in datos and "criterio" in datos:
+            texto = datos["precision"]
+            try:
+                valor, criterio = leer_tolerancia(texto, datos["criterio"] or ABSOLUTO, predeterminada=TOLERANCIA)
+                precision = validar_tolerancia_raices(valor, criterio, self.magnitud)
+                datos.update(precision=precision, criterio=criterio, tolerancia_original=texto)
+            except ValueError as error:
+                self.add_error("precision", str(error))
         if datos.get("max_iteraciones") is None:
             datos["max_iteraciones"] = MAX_ITERACIONES
         if "a" in datos and "b" in datos and datos["a"] >= datos["b"]:
@@ -63,15 +81,18 @@ class RaicesForm(FormularioConErrores):
 
 class BiseccionForm(RaicesForm):
     magnitud, etiqueta = "precisión", "Precisión del intervalo"
+    criterio = campo_criterio(((ABSOLUTO, "Longitud del intervalo"),
+                               (RELATIVO, "Cota del error relativo"),
+                               (PORCENTUAL, "Cota del error relativo porcentual")))
 
 
 class ReglaFalsaForm(RaicesForm):
-    magnitud, etiqueta = "tolerancia", "Tolerancia del error absoluto"
+    magnitud, etiqueta = "tolerancia", "Tolerancia"
 
 
 class NewtonRaphsonForm(RaicesForm):
     a = b = None
-    etiqueta = "Tolerancia del cambio y del residuo"
+    etiqueta = "Tolerancia"
     x0 = forms.FloatField(label="Aproximación inicial x₀",
         widget=forms.NumberInput(attrs={"class": "field-input", "step": "any"}))
 

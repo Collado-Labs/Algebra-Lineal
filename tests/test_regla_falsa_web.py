@@ -37,17 +37,17 @@ class ReglaFalsaWebTests(SimpleTestCase):
         form = ReglaFalsaForm()
         for campo in ("funcion", "a", "b"):
             self.assertIsNone(form[campo].value())
-        self.assertEqual(form["precision"].value(), .0001)
+        self.assertEqual(form["precision"].value(), "0.0001")
         self.assertEqual(form["max_iteraciones"].value(), 200)
-        self.assertEqual(form["precision"].label, "Tolerancia del error absoluto")
+        self.assertEqual(form["precision"].label, "Tolerancia")
         pagina = Pagina(r.content.decode())
-        self.assertEqual(set(pagina.json["math-keyboard-profiles"]), {"funcion-real"})
+        self.assertEqual(set(pagina.json["math-keyboard-profiles"]), {"funcion-real", "tolerancia"})
         self.assertEqual(len(pagina.teclados), 1)
         for recurso in ("raices.js", "regla_falsa.js", "raices.css", "plotly-basic", "teclado.js"):
             self.assertContains(r, recurso)
         self.assertNotContains(r, "calculadora/biseccion.js")
         self.assertNotContains(r, 'id="resultado"')
-        self.assertContains(r, "no con un porcentaje")
+        self.assertContains(r, "El criterio relativo divide el cambio")
 
     def test_catalogo_busqueda_area_y_herramientas_hermanas(self):
         # Regla falsa vive en Métodos cerrados: su ruta es un método de esa herramienta.

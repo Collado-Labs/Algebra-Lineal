@@ -18,6 +18,7 @@ from backend.expresiones import (
     formatear_ecuacion,
     normalizar_igualdad,
 )
+from backend.funciones_reales import SIGNOS_MATEMATICOS
 from backend.presupuesto_sistemas import (
     validar_dimensiones,
     validar_longitud_sistema,
@@ -41,6 +42,12 @@ _VARIABLE = re.compile(r"x\d+")
 _FUNCION = re.compile(r"[A-Za-z]{2,}(?=\()")
 # «0,5» o «-3,14»: una sola coma entre cifras y sin espacios. «1,000» también puede
 # separar miles, así que con tres cifras tras una parte entera no se sugiere nada.
+_SUBINDICES = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+_NOMBRES = {"x": "x1", "y": "x2", "z": "x3", "w": "x4"}
+_VARIABLE_NOMBRADA = re.compile(
+    r"(?<![A-Za-z_])[xyzw](?![A-Za-z_0-9₀₁₂₃₄₅₆₇₈₉])")
+_VARIABLE_INDEXADA = re.compile(r"(?<![A-Za-z_])x[0-9₀₁₂₃₄₅₆₇₈₉]+")
+_FRACCION_AGRUPADA = re.compile(r"([+-])(?:\(([0-9]+/[0-9]+)\)|\(([0-9]+)\)/\(([0-9]+)\))(?=x[0-9]+|[+-]|$)")
 _COMA_DECIMAL = re.compile(r"[+-]?([0-9]*),([0-9]+)")
 
 
@@ -81,6 +88,8 @@ def _separar_terminos(expresion):
     if expresion[0] not in "+-":
         expresion = "+" + expresion
 
+    expresion = _FRACCION_AGRUPADA.sub(
+        lambda m: m[1] + (m[2] or f"{m[3]}/{m[4]}"), expresion)
     terminos = _TERMINOS_CON_SIGNO.findall(expresion)
     if not terminos or "".join(terminos) != expresion:
         raise ValueError("cada + o - debe ir seguido de un número o de una variable xN")
@@ -120,7 +129,7 @@ def _explicar_termino(termino):
     if "*" in cuerpo:
         return "escribe el coeficiente junto a la variable, sin *, como 2x1"
     if "(" in cuerpo or ")" in cuerpo:
-        return "escribe cada término sin paréntesis, como 2x1 + 2x2"
+        return "escribe cada término sin paréntesis, salvo fracciones como (1/2)x1"
     if "x" in cuerpo:
         return "solo se admiten variables x1, x2, ... con coeficientes numéricos"
     return f"«{cuerpo}» no es un número ni una variable xN"
@@ -175,13 +184,22 @@ def _leer_miembro(miembro, *, limitar_entrada=False):
     return [_leer_termino(termino) for termino in terminos]
 
 
+def _normalizar_variables(texto):
+    # Las filas pueden omitir incógnitas. El nombre mantiene la misma columna en todo el sistema.
+    compacto = _ESPACIOS.sub("", texto.translate(SIGNOS_MATEMATICOS)).lower()
+    if _VARIABLE_NOMBRADA.search(compacto) and _VARIABLE_INDEXADA.search(compacto):
+        raise ValueError("usa x, y, z, w o bien x1, x2, … en todo el sistema, sin mezclar ambas notaciones")
+    compacto = _VARIABLE_NOMBRADA.sub(lambda m: _NOMBRES[m[0]], compacto)
+    return _VARIABLE_INDEXADA.sub(lambda m: m[0].translate(_SUBINDICES), compacto)
+
+
 def _leer_ecuacion(ecuacion, *, limitar_entrada=False):
     """(coeficientes, termino independiente, ya estaba en forma estandar).
 
     Parsear cada lado, representarlo y normalizar la igualdad. Una variable
     escrita que se cancela conserva su columna con coeficiente 0.
     """
-    lados = ecuacion.split("=")
+    lados = _normalizar_variables(ecuacion).split("=")
     if len(lados) != 2:
         raise ValueError("cada ecuación debe contener un único signo '='")
 
@@ -274,6 +292,7 @@ def _leer_sistema(texto, limitar_entrada):
         validar_dimensiones(len(ecuaciones), 1)
 
     try:
+        _normalizar_variables(texto)
         analizadas = [
             _leer_ecuacion(ecuacion, limitar_entrada=limitar_entrada)
             for ecuacion in ecuaciones
@@ -313,7 +332,7 @@ def analizar_sistema(texto, *, limitar_entrada=False):
         for numero, (ecuacion, (coeficientes, termino_independiente, estandar)) in enumerate(
             zip(ecuaciones, analizadas), start=1
         )
-        if not estandar
+        if not estandar or _VARIABLE_NOMBRADA.search(_ESPACIOS.sub("", ecuacion).lower())
     ]
     return matriz, reescritas
 

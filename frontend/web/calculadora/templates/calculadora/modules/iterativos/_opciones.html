@@ -6,13 +6,16 @@
         <p id="ayuda-inicial-iterativo" class="field-help">Una componente por incógnita, separadas por espacios. Vacío: ceros.</p>
         {{ form.inicial_iterativo.errors }}
     </div>
-    <div class="field-group">
+    <div class="field-group" data-perfil="tolerancia">
         <label for="{{ form.tolerancia_iterativa.id_for_label }}">Tolerancia ε</label>
         {{ form.tolerancia_iterativa }}{{ form.tolerancia_iterativa.errors }}
+    </div>
+    <div class="field-group">
+        {{ form.criterio.label_tag }}{{ form.criterio }}{{ form.criterio.errors }}
     </div>
     <div class="field-group">
         {{ form.max_iteraciones.label_tag }}
         {{ form.max_iteraciones }}{{ form.max_iteraciones.errors }}
     </div>
-    <p class="field-help iterativo-criterio">Se detiene cuando el cambio máximo ‖x⁽ᵏ⁾ − x⁽ᵏ⁻¹⁾‖∞ y el residuo ‖b − Ax⁽ᵏ⁾‖∞ son menores que ε.</p>
+    <p id="ayuda-tolerancia-iterativa" class="field-help iterativo-criterio">Admite 10⁻⁶, 1e-6 y 0,01%. El signo % selecciona el cambio porcentual. En modo relativo, el residuo conserva su umbral de 0.0001.</p>
 </fieldset>
