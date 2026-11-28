@@ -7,9 +7,10 @@ parada ni es la distancia a la raíz, y no existe en la primera iteración.
 
 from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA as PRECISION, preparar_intervalo
 from .resultados_raices import ClasificacionRaices as Clasificacion
+from .tolerancias import ABSOLUTO, cota_relativa_intervalo, motivo_cero, validar_criterio
 
 
-def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONES):
+def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONES, *, criterio=ABSOLUTO):
     """Biseca [a, b] y devuelve un diccionario serializable con la tabla y su conclusión.
 
     `preparar_intervalo` valida los parámetros (ValueError) y la aplicabilidad: dominio,
@@ -18,18 +19,22 @@ def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONE
     actualizado es estrictamente menor que `precision` ("longitud"). `c`, `fc` y `residuo`
     se vuelven a evaluar al terminar. Estados y claves de cada fila: docs/biseccion.md.
     """
+    validar_criterio(criterio)
     inicial, precision, impedimento = preparar_intervalo(funcion, a, b, precision, max_iteraciones)
     a, b, fa, fb = (inicial[k] for k in ("a", "b", "fa", "fb"))
     filas = []
 
     def resultado(c, estado, mensaje, clasificacion=None):
         fc = funcion(c) if c is not None else None  # Verificación final independiente del valor guardado en la fila.
-        convergio = estado in ("exacta", "longitud")
+        convergio = estado in ("exacta", "longitud", "tolerancia")
         clasificacion = clasificacion or (Clasificacion.RAIZ_APROXIMADA if convergio else Clasificacion.SIN_CONVERGENCIA)
         return {"clasificacion": clasificacion, "inicial": inicial, "max_iteraciones": max_iteraciones,
                 "c": c, "fc": fc, "residuo": abs(fc) if fc is not None else None, "a": a, "b": b, "fa": fa, "fb": fb,
                 "longitud": b - a, "precision": precision, "iteraciones": filas,
                 "error_absoluto": filas[-1]["error_absoluto"] if filas and filas[-1]["c"] == c else None,
+                "criterio": criterio,
+                "valor_criterio": (b - a if criterio == ABSOLUTO else cota_relativa_intervalo(a, b, c))
+                if c is not None else None,
                 "estado": estado, "convergio": convergio, "mensaje": mensaje}
 
     if impedimento:
@@ -40,7 +45,7 @@ def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONE
         c = a if fa == 0 else b
         a = b = c
         fa = fb = 0.
-        return resultado(c, "exacta", "Raíz en un extremo: f(c) = 0.")
+        return resultado(c, *motivo_cero(criterio, c, "Raíz en un extremo: f(c) = 0."))
     anterior = None
     for i in range(1, max_iteraciones + 1):
         c = a + (b - a) / 2
@@ -63,9 +68,15 @@ def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONE
         else:
             a, fa = c, fc
         fila.update({"nuevo_a": a, "nuevo_b": b, "longitud": b - a})
+        medida = b - a if criterio == ABSOLUTO else cota_relativa_intervalo(a, b, c)
+        fila["valor_criterio"] = medida
         if fc == 0:
-            return resultado(c, "exacta", "Raíz encontrada: f(c) = 0 en aritmética de máquina.")
-        if b - a < precision:
-            return resultado(c, "longitud", "Convergencia por longitud del intervalo, con dominio y cambio de signo verificados.")
+            return resultado(c, *motivo_cero(criterio, c, "Raíz encontrada: f(c) = 0 en aritmética de máquina."))
+        if medida is not None and medida < precision:
+            if criterio == ABSOLUTO:
+                return resultado(c, "longitud", "Convergencia por longitud del intervalo, con dominio y cambio de signo verificados.")
+            return resultado(c, "tolerancia", "La cota relativa del error es menor que la tolerancia; se verificó el intervalo.")
         anterior = c
+    if medida is None:
+        return resultado(c, "criterio_indefinido", "No se pudo calcular la cota relativa: el intervalo contiene cero o su distancia a cero es demasiado pequeña.")
     return resultado(c, "limite", "No converge a la precisión pedida: se alcanzó el máximo de iteraciones.")
