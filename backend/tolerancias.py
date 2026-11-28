@@ -1,20 +1,22 @@
 """Tolerancias y medidas de parada en las unidades propias de cada criterio."""
 
 from fractions import Fraction
-from math import isfinite, nextafter, inf
+from math import inf, isfinite, nextafter
 import re
 from sys import float_info
 
 from .funciones_reales import SIGNOS_MATEMATICOS, normalizar_potencias
+from .seguridad_numerica import validar_literal_numerico
 
 ABSOLUTO, RELATIVO, PORCENTUAL = "absoluto", "relativo", "porcentual"
 CRITERIOS = (ABSOLUTO, RELATIVO, PORCENTUAL)
 _NO_EVALUABLE = ("criterio_indefinido",
                 "Se obtuvo un cero de máquina, pero el criterio relativo queda indefinido "
                 "con una aproximación nula o subnormal. Elige el criterio absoluto.")
-_NUMERO = re.compile(r"[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE]([+-]?[0-9]{1,4}))?")
+_DIGITOS = r"[0-9](?:_?[0-9])*"
+_NUMERO = re.compile(rf"[+]?(?:{_DIGITOS}(?:\.(?:{_DIGITOS})?)?|\.{_DIGITOS})(?:[eE]([+-]?[0-9]{{1,4}}))?")
 _POTENCIA_DIEZ = re.compile(r"10\s*\*\*\s*(?:\(\s*([+-]?[0-9]{1,4})\s*\)|([+-]?[0-9]{1,4}))")
-_FRACCION = re.compile(r"[+]?[0-9]+\s*/\s*[0-9]+")
+_FRACCION = re.compile(rf"[+]?{_DIGITOS}\s*/\s*{_DIGITOS}")
 
 
 def validar_criterio(criterio):
@@ -43,12 +45,17 @@ def leer_tolerancia(texto, criterio=ABSOLUTO, *, predeterminada, admitir_fraccio
                 raise ValueError
             valor = Fraction(10) ** exponente
         elif numero and abs(int(numero[1] or 0)) <= 400:
+            if admitir_fraccion and not numero[1]:
+                validar_literal_numerico(literal)
             valor = Fraction(literal)
         elif admitir_fraccion and _FRACCION.fullmatch(literal):
+            validar_literal_numerico(literal)
             valor = Fraction(re.sub(r"\s+", "", literal))
         else:
             raise ValueError
         if criterio == PORCENTUAL:
+            if not isfinite(float(valor)):
+                raise ValueError
             valor /= 100
         if not 0 < float(valor) < inf:
             raise ValueError

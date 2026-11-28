@@ -5,6 +5,7 @@ import unittest
 
 from backend.derivacion_real import DerivadaReal
 from backend.funciones_reales import FuncionReal
+from backend.gauss_jordan import aplicar_gauss_jordan
 from backend.parser_sistemas import analizar_sistema
 
 
@@ -16,6 +17,7 @@ class EntradaMatematicaTests(unittest.TestCase):
             ("eˣ − 3x² = 0", math.exp(x) - 3*x*x),
             ("cos(x) − x·eˣ = 0", math.cos(x) - x*math.exp(x)),
             ("x·ln(x) − 1 = 0", x*math.log(x) - 1),
+            ("x.e^(−x) − 0.2 = 0", x*math.exp(-x) - .2),
             ("e^(−x) + cos(x) = 0.5", math.exp(-x) + math.cos(x) - .5),
             ("ln(x)+sen(x)=1.2", math.log(x) + math.sin(x) - 1.2),
             ("e^(x/2) + sen(2x) = 3", math.exp(x/2) + math.sin(2*x) - 3),
@@ -50,6 +52,8 @@ class EntradaMatematicaTests(unittest.TestCase):
             ("0.5x - 0.75y + 2z – (1)/(3)w = (181)/(60)", [Fraction(1,2), Fraction(-3,4), 2, Fraction(-1,3), Fraction(181,60)]),
             ("(1/2)x₂ + x₃ − x₄ = 3", [0, Fraction(1,2), 1, -1, 3]),
             ("−0.7x₁ + 2.2x₂ + 1.1x₄ = 2.6", [Fraction(-7,10), Fraction(11,5), 0, Fraction(11,10), Fraction(13,5)]),
+            ("2x₁ + (2/3)x₂ − (1/2)x₃ + x₄ = 2", [2, Fraction(2, 3), Fraction(-1, 2), 1, 2]),
+            ("1.25x₂ + 2.50x₃ − 0.75x₄ = 2.25", [0, Fraction(5, 4), Fraction(5, 2), Fraction(-3, 4), Fraction(9, 4)]),
             ("X1 − (1/2)x₂ + (1/4)x₃ + 2x₄ = 5", [1, Fraction(-1,2), Fraction(1,4), 2, 5]),
         )
         for texto, fila in casos:
@@ -62,3 +66,19 @@ class EntradaMatematicaTests(unittest.TestCase):
             analizar_sistema("x=1\nx₂=2", limitar_entrada=True)
         with self.assertRaisesRegex(ValueError, "denominador cero"):
             analizar_sistema("(1/0)x₂ = 2", limitar_entrada=True)
+
+
+    def test_ejercicio_12_sistema_completo_verificado_por_sustitucion(self):
+        texto = """0.5x - 0.75y + 2z – (1)/(3)w = (181)/(60)
+1.5x + y - 2.5z + (2)/(3)w = -0.75
+-x + 0.5y + (3)/(4)z - 2w = (7)/(30)
+(2)/(3)x - 2y + 0.5z + 1.25w = (253)/(120)"""
+        matriz, reescritas = analizar_sistema(texto, limitar_entrada=True)
+        r, _, pivotes = aplicar_gauss_jordan(matriz, columnas_pivote=4)
+        self.assertEqual(pivotes, [(0, 0), (1, 1), (2, 2), (3, 3)])
+        self.assertEqual(len(reescritas), 4)
+        x, y, z, w = (fila[-1] for fila in r)
+        self.assertEqual(Fraction(1, 2)*x - Fraction(3, 4)*y + 2*z - w/3, Fraction(181, 60))
+        self.assertEqual(Fraction(3, 2)*x + y - Fraction(5, 2)*z + 2*w/3, -Fraction(3, 4))
+        self.assertEqual(-x + y/2 + Fraction(3, 4)*z - 2*w, Fraction(7, 30))
+        self.assertEqual(2*x/3 - 2*y + z/2 + Fraction(5, 4)*w, Fraction(253, 120))

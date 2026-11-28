@@ -4,10 +4,10 @@ from fractions import Fraction
 
 from .derivacion_real import DerivadaReal
 from .funciones_reales import finito
-from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA
+from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, validar_tolerancia_raices
 from .resultados_raices import ClasificacionRaices as Clasificacion
 from .resultados_raices import impedimento_paso_abierto
-from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero, validar_criterio
+from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero
 
 
 def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIONES, *, criterio=ABSOLUTO):
@@ -15,17 +15,15 @@ def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERA
 
     La derivada se obtiene de `funcion` con `DerivadaReal`, así que solo admite el subconjunto
     derivable de `FuncionReal`; si no se puede, el `estado` es "derivacion". Parámetros inválidos
-    (tolerancia fuera de (0, 0.0001], iteraciones fuera de 1–1000) lanzan ValueError. El criterio
+    (tolerancia inválida o iteraciones fuera de 1–1000) lanzan ValueError. El criterio
     de convergencia es el mismo de `secante`: cero de máquina, o cambio y residuo dentro de la
     tolerancia sin objeción de `impedimento_paso_abierto`. A diferencia de Secante, el estado de
     Newton es una sola abscisa: repetir una aproximación anterior ya es un ciclo ("oscilacion").
     Estados y claves de cada fila: docs/newton-raphson.md.
     """
-    x0, tolerancia = finito(x0), finito(tolerancia)
-    validar_criterio(criterio)
+    x0 = finito(x0)
+    tolerancia = validar_tolerancia_raices(tolerancia, criterio)
     tolerancia_residuo = tolerancia if criterio == ABSOLUTO else TOLERANCIA
-    if not 0 < tolerancia <= TOLERANCIA:
-        raise ValueError("La tolerancia debe ser positiva y no mayor que 0.0001.")
     if type(max_iteraciones) is not int or not 1 <= max_iteraciones <= 1000:
         raise ValueError("El máximo de iteraciones debe ser un entero entre 1 y 1000.")
     x, fx = x0, None

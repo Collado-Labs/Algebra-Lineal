@@ -7,7 +7,7 @@ parada ni es la distancia a la raíz, y no existe en la primera iteración.
 
 from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA as PRECISION, preparar_intervalo
 from .resultados_raices import ClasificacionRaices as Clasificacion
-from .tolerancias import ABSOLUTO, cota_relativa_intervalo, motivo_cero, validar_criterio
+from .tolerancias import ABSOLUTO, cota_relativa_intervalo, motivo_cero
 
 
 def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONES, *, criterio=ABSOLUTO):
@@ -19,8 +19,7 @@ def biseccion(funcion, a, b, precision=PRECISION, max_iteraciones=MAX_ITERACIONE
     actualizado es estrictamente menor que `precision` ("longitud"). `c`, `fc` y `residuo`
     se vuelven a evaluar al terminar. Estados y claves de cada fila: docs/biseccion.md.
     """
-    validar_criterio(criterio)
-    inicial, precision, impedimento = preparar_intervalo(funcion, a, b, precision, max_iteraciones)
+    inicial, precision, impedimento = preparar_intervalo(funcion, a, b, precision, max_iteraciones, criterio=criterio)
     a, b, fa, fb = (inicial[k] for k in ("a", "b", "fa", "fb"))
     filas = []
 

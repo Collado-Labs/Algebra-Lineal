@@ -15,7 +15,7 @@ FUNCIONES = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": math.exp,
 CONSTANTES = {"pi": math.pi, "e": math.e}
 OPERACIONES = {ast.Add: operator.add, ast.Sub: operator.sub,
                ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Pow: math.pow}
-SIGNOS_MATEMATICOS = str.maketrans("−–×·⋅÷∕⁄", "--***///")
+SIGNOS_MATEMATICOS = str.maketrans("−–×·⋅∙÷∕⁄", "--****///")
 SUPERINDICES = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-")
 
 
@@ -27,7 +27,7 @@ def normalizar_potencias(texto):
         signo = exponente[0] if exponente[0] in "+-" else ""
         exponente = signo + (exponente.lstrip("+-").lstrip("0") or "0")
         return f"**({exponente})"
-    texto = re.sub(r"(?<=[ex0-9)])(⁻?ˣ)(?![⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ˣ])",
+    texto = re.sub(r"(?<=[ex0-9)])([⁺⁻]?ˣ)(?![⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ˣ])",
                    lambda m: "^(-x)" if m[0] == "⁻ˣ" else "^(x)", texto)
     return re.sub(r"[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+", entero, texto.replace("^", "**"))
 
@@ -172,6 +172,8 @@ class FuncionReal:
             for miembro in miembros:
                 miembro = miembro.replace("π", " pi ").replace("log₁₀", "log10")
                 miembro = miembro.replace("√", " sqrt")
+                # El punto de producto antes de una potencia de e también aparece en texto de clase.
+                miembro = re.sub(r"(?<=x)\.(?=e(?:\^|[⁺⁻ˣ⁰¹²³⁴⁵⁶⁷⁸⁹]))", "*", miembro)
                 normal = explicitar_productos(normalizar_potencias(miembro.strip())).strip()
                 # Validar cada miembro antes de añadir los paréntesis de la resta.
                 if len(miembros) == 2:

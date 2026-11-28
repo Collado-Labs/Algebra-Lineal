@@ -88,6 +88,8 @@ def _separar_terminos(expresion):
     if expresion[0] not in "+-":
         expresion = "+" + expresion
 
+    expresion = _FRACCION_AGRUPADA.sub(
+        lambda m: m[1] + (m[2] or f"{m[3]}/{m[4]}"), expresion)
     terminos = _TERMINOS_CON_SIGNO.findall(expresion)
     if not terminos or "".join(terminos) != expresion:
         raise ValueError("cada + o - debe ir seguido de un número o de una variable xN")
@@ -174,10 +176,6 @@ def _leer_miembro(miembro, *, limitar_entrada=False):
         except (ValueError, ZeroDivisionError):
             pass
 
-    if compacto[0] not in "+-":
-        compacto = "+" + compacto
-    compacto = _FRACCION_AGRUPADA.sub(
-        lambda m: m[1] + (m[2] or f"{m[3]}/{m[4]}"), compacto)
     terminos = _separar_terminos(compacto)
     if limitar_entrada:
         for termino in terminos:

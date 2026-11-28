@@ -6,7 +6,7 @@ import math
 from .funciones_reales import finito
 from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, preparar_intervalo
 from .resultados_raices import ClasificacionRaices as Clasificacion
-from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero, validar_criterio
+from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero
 
 
 def interseccion_secante(a, b, fa, fb):
@@ -40,8 +40,7 @@ def regla_falsa(funcion, a, b, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERAC
     estado es "estancamiento", no convergencia.
     Estados y claves de cada fila: docs/regla-falsa.md.
     """
-    validar_criterio(criterio)
-    inicial, tolerancia, impedimento = preparar_intervalo(funcion, a, b, tolerancia, max_iteraciones, "tolerancia")
+    inicial, tolerancia, impedimento = preparar_intervalo(funcion, a, b, tolerancia, max_iteraciones, "tolerancia", criterio=criterio)
     a, b, fa, fb = (inicial[k] for k in ("a", "b", "fa", "fb"))
     filas = []
 
@@ -107,7 +106,10 @@ def regla_falsa(funcion, a, b, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERAC
         fijo = quieto
         medida = error if criterio == ABSOLUTO else medida_relativa(error, xr)
         cumple = medida is not None and medida <= tolerancia
-        tolerancia_prueba = tolerancia if criterio == ABSOLUTO else Fraction(tolerancia) * abs(Fraction(xr))
+        tolerancia_prueba = tolerancia
+        if criterio != ABSOLUTO:
+            # El extremo opuesto limita el radio incluso con tolerancias relativas grandes.
+            tolerancia_prueba = min(b - a, Fraction(tolerancia) * abs(Fraction(xr)))
         prueba = f_prueba = None
         confirmada = False
         if cumple and fxr != 0:

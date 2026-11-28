@@ -7,10 +7,10 @@ extremos de un intervalo, solo los dos primeros puntos de la recta.
 from fractions import Fraction
 
 from .funciones_reales import finito
-from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA
+from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, validar_tolerancia_raices
 from .resultados_raices import ClasificacionRaices as Clasificacion
 from .resultados_raices import impedimento_paso_abierto
-from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero, validar_criterio
+from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero
 
 # Por debajo de esta fracción de |f| la diferencia f(xₙ) − f(xₙ₋₁) es del orden del redondeo de
 # las evaluaciones (unas miles de ulp): la pendiente de la secante ya no significa nada.
@@ -29,21 +29,18 @@ def secante(funcion, x0, x1, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIO
     """Itera la secante desde x₀ ≠ x₁ y devuelve un diccionario serializable con la tabla y su conclusión.
 
     `funcion` recibe y devuelve floats; cada corte se calcula con diferencias racionales exactas y
-    solo el resultado se redondea a float. Parámetros inválidos (x₀ = x₁, tolerancia fuera de
-    (0, 0.0001], iteraciones fuera de 1–1000) lanzan ValueError. Converge (`estado` "exacta" o
+    solo el resultado se redondea a float. Parámetros inválidos (x₀ = x₁, tolerancia inválida, iteraciones fuera de 1–1000) lanzan ValueError. Converge (`estado` "exacta" o
     "tolerancia", `convergio=True`) si f(x) = 0 en máquina, o si el cambio |xₙ₊₁ − xₙ| y el residuo
     |f(xₙ₊₁)| no superan la tolerancia y `impedimento_paso_abierto` no objeta el último paso.
     `x`, `fx` y `residuo` se vuelven a evaluar al terminar (None si no hubo evaluación válida).
     `iteraciones` reúne los pasos completos; `intento_final`, el paso interrumpido o None.
     Estados y claves de cada fila: docs/secante.md; clasificaciones: `ClasificacionRaices`.
     """
-    x0, x1, tolerancia = finito(x0), finito(x1), finito(tolerancia)
+    x0, x1 = finito(x0), finito(x1)
     if x0 == x1:
         raise ValueError("x₀ y x₁ deben ser distintos: la secante necesita dos puntos.")
-    validar_criterio(criterio)
+    tolerancia = validar_tolerancia_raices(tolerancia, criterio)
     tolerancia_residuo = tolerancia if criterio == ABSOLUTO else TOLERANCIA
-    if not 0 < tolerancia <= TOLERANCIA:
-        raise ValueError("La tolerancia debe ser positiva y no mayor que 0.0001.")
     if type(max_iteraciones) is not int or not 1 <= max_iteraciones <= 1000:
         raise ValueError("El máximo de iteraciones debe ser un entero entre 1 y 1000.")
     x, fx = x1, None
