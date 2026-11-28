@@ -103,7 +103,9 @@ def grupo_digitos(base: int) -> GrupoTeclas:
 
 PERFIL_SISTEMA = Perfil("sistema", (VARIABLES, OPERACIONES, ECUACIONES))
 PERFIL_NUMERICO = Perfil("numerico", (VALORES,), ayuda="Inserta en la celda donde está el cursor.")
-PERFIL_EXPRESION = Perfil("expresion", (EXPRESIONES, OPERADORES_EXPRESION))
+PERFIL_EXPRESION = Perfil("expresion", (EXPRESIONES, OPERADORES_EXPRESION,
+    GrupoTeclas("Separar expresiones", (Tecla("Nueva línea", "\n", "Empezar otra expresión"),)),
+))
 PERFIL_LINEAL = Perfil("lineal", (VARIABLES, LINEALES))
 PERFIL_FUNCION_REAL = Perfil("funcion-real", (
     GrupoTeclas("Variable y potencias", (

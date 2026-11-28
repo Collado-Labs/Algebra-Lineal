@@ -54,7 +54,7 @@
             enfocarExpresion(w);
             igual(nombres(w), ['A','B']);
             igual([...w.document.querySelectorAll('.math-keyboard-group')].map(g => g.getAttribute('aria-label')),
-                ['Operandos','Notación','Operadores']);
+                ['Operandos','Notación','Operadores','Separar expresiones']);
             igual(operandos(w).every(b => b.textContent === b.dataset.insercion && b.tabIndex === -1
                 && b.getAttribute('aria-label').startsWith(b.textContent)), true);
         }],
@@ -102,7 +102,7 @@
             igual([...w.document.querySelectorAll('.math-key')].map(b => b.dataset.insercion), ['-','/']);
             while (cantidad(w,'[data-simbolo]')) click(w,'[data-eliminar]');
             enfocarExpresion(w); await turno(); igual(nombres(w), []);
-            igual([...w.document.querySelectorAll('.math-key')].map(b => b.dataset.insercion), ['()','ᵀ','+','-','·','=','/']);
+            igual([...w.document.querySelectorAll('.math-key')].map(b => b.dataset.insercion), ['()','ᵀ','+','-','·','=','/','\n']);
         }],
         ["Teclado: Opciones, Nombre, Tipo y Escape conservan ocultación contextual", "matrices", async w => {
             const dock = w.document.querySelector('.math-keyboard');
@@ -295,10 +295,28 @@
                 valor(w, `[name="filas_${k}"]`, 3);
                 matriz.forEach((fila, i) => fila.forEach((v, j) => valor(w, `[name="celda_${k}_${i}_${j}"]`, v)));
             });
-            click(w, '[data-agregar-expresion]');
-            click(w, '[data-agregar-expresion]');
             const expresiones = ['A + B', 'A - C', 'A + B + C'];
-            camposExpresion(w).forEach((campo, i) => valor(w, `#${campo.id}`, expresiones[i]));
+            const campo = expresion(w);
+            igual(campo.getAttribute("aria-describedby"), "expresiones-ayuda");
+            igual(w.document.querySelector("#expresiones-ayuda").textContent.includes("punto y coma"), true);
+            if (estilo === 'estudio' && tema === 'light') {
+                valor(w, '#id_expresion', expresiones[0]);
+                campo.focus();
+                campo.setSelectionRange(campo.value.length, campo.value.length);
+                const linea = [...w.document.querySelectorAll('.math-key')]
+                    .find(tecla => tecla.dataset.insercion === '\n');
+                linea.click();
+                igual(campo.value, expresiones[0] + '\n');
+                igual(w.document.activeElement === campo, true);
+                w.document.execCommand('insertText', false, expresiones.slice(1).join(';\n\n'));
+            } else if (tema === 'dark') {
+                click(w, '[data-agregar-expresion]');
+                valor(w, '#id_expresion', expresiones.slice(0, 2).join('; '));
+                valor(w, '#id_expresion_1', expresiones[2]);
+            } else {
+                valor(w, '#id_expresion', expresiones.join('\n'));
+            }
+            igual(w.document.querySelector('[data-calculo]').textContent, 'Calcular expresiones');
             w = await enviar(frame);
             const doc = w.document;
             igual(w.location.hash, '#resultado');

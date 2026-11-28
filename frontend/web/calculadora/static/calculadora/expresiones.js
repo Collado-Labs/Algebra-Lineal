@@ -59,7 +59,19 @@
     const agregarExpresion = form.querySelector("[data-agregar-expresion]");
     const avisoExpresiones = form.querySelector("[data-aviso-expresiones]");
     const calcular = form.querySelector(".workspace-actions [data-calculo]");
+    const ayudaExpresiones = "expresiones-ayuda";
+    const maximoExpresiones = Number(listaExpresiones.dataset.maximo);
     const filasExpresiones = () => [...listaExpresiones.querySelectorAll("[data-fila-expresion]")];
+
+    function actualizarCantidadExpresiones() {
+        const filas = filasExpresiones();
+        const cantidad = filas.reduce((total, fila) => {
+            const tramos = fila.querySelector("textarea").value.split(/[;\r\n]/);
+            return total + (tramos.length > 1 ? tramos.filter(tramo => tramo.trim()).length : 1);
+        }, 0);
+        agregarExpresion.disabled = filas.length >= maximoExpresiones || cantidad >= maximoExpresiones;
+        calcular.textContent = cantidad > 1 ? "Calcular expresiones" : "Calcular";
+    }
 
     function numerarExpresiones() {
         const filas = filasExpresiones();
@@ -80,11 +92,10 @@
             if (error) {
                 error.id = `${entrada.id}_error`;
                 error.dataset.errorField = entrada.id;
-                entrada.setAttribute("aria-describedby", error.id);
+                entrada.setAttribute("aria-describedby", ayudaExpresiones + " " + error.id);
             }
         });
-        agregarExpresion.disabled = filas.length >= Number(listaExpresiones.dataset.maximo);
-        calcular.textContent = varias ? "Calcular expresiones" : "Calcular";
+        actualizarCantidadExpresiones();
     }
 
     function editarExpresiones(destino, mensaje) {
@@ -102,7 +113,7 @@
         const entrada = nueva.querySelector("textarea");
         entrada.defaultValue = entrada.value = "";
         entrada.removeAttribute("aria-invalid");
-        entrada.removeAttribute("aria-describedby");
+        entrada.setAttribute("aria-describedby", ayudaExpresiones);
         nueva.querySelector("[data-error-field]")?.remove();
         listaExpresiones.append(nueva);
         editarExpresiones(nueva, `Se agregó la expresión ${filasExpresiones().length}.`);
@@ -120,7 +131,8 @@
         const fila = event.target.closest("[data-fila-expresion]");
         fila?.querySelector("[data-error-field]")?.remove();
         event.target.removeAttribute("aria-invalid");
-        event.target.removeAttribute("aria-describedby");
+        event.target.setAttribute("aria-describedby", ayudaExpresiones);
+        actualizarCantidadExpresiones();
     });
     numerarExpresiones();
 

@@ -27,6 +27,7 @@
             <p class="field-help" data-presupuesto role="status" aria-live="polite"></p>
             <noscript><p class="field-help">Cambia un tipo o las dimensiones y pulsa <strong>Aplicar</strong> antes de calcular. <strong>Agregar operando</strong> y <strong>Eliminar</strong> también funcionan sin JavaScript.</p></noscript>
             <div class="expression-field" data-perfil="expresion" data-operandos="#symbol-list">
+                <p id="expresiones-ayuda" class="field-help">Escribe o pega hasta {{ form.expresiones_maximas }} expresiones, una por línea o separadas por punto y coma. También puedes agregar campos individuales.</p>
                 <div data-lista-expresiones data-maximo="{{ form.expresiones_maximas }}">
                     {% for campo in form.expresiones %}
                         {% include "calculadora/modules/expresiones/_campo.html" %}

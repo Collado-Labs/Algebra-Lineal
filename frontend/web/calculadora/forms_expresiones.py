@@ -8,6 +8,8 @@ Presupuesto común (P26.6), comprobado antes de crear un campo por celda:
   (o encadenar signos y traspuestas) no eluda los topes.
 """
 
+import re
+
 from django import forms
 
 from backend.expresiones_matriciales.combinacion import incognitas
@@ -27,6 +29,8 @@ LONGITUD_EXPRESION_MAXIMA = 400
 # 990 campos de operandos + 5 expresiones + csrf, cantidad, método, firma y nodo.
 EXPRESIONES_MAXIMAS = 5
 NOMBRES_EXPRESIONES = ("expresion", *(f"expresion_{i}" for i in range(1, EXPRESIONES_MAXIMAS)))
+_SEPARADORES = re.compile(r"[;\r\n]")
+_TRAMOS = re.compile(r"[^;\r\n]+")
 # Los tipos simbólicos siguen disponibles, agrupados aparte para no competir con los valores.
 TIPOS = (
     ("Con valores", (("matriz", "Matriz"), ("vector", "Vector"), ("escalar", "Escalar"))),
@@ -149,7 +153,7 @@ class ExpresionMatricialForm(FormularioCeldas):
         label="Expresión", required=False,
         widget=forms.Textarea(attrs={
             "class": "field-input field-input-code", "rows": 2, "spellcheck": "false",
-            "placeholder": "A + B", "maxlength": LONGITUD_EXPRESION_MAXIMA,
+            "placeholder": "A + B", "aria-describedby": "expresiones-ayuda",
         }),
     )
     cantidad = forms.IntegerField(
@@ -179,6 +183,7 @@ class ExpresionMatricialForm(FormularioCeldas):
         self.nombres_lineales = []
         self.bloques = []
         self.expresiones_maximas = EXPRESIONES_MAXIMAS
+        self.campo_excedido = self._expandir_expresiones() if self.is_bound and not accion else None
         self.expresiones = [self["expresion"]]
         origen = self.data if self.is_bound else self.initial
         for nombre in NOMBRES_EXPRESIONES[1:]:
@@ -197,6 +202,36 @@ class ExpresionMatricialForm(FormularioCeldas):
             estructuras = [(tipo, DIMENSION_PREDETERMINADA, DIMENSION_PREDETERMINADA) for tipo, _, _ in estructuras]
         for indice, estructura in enumerate(estructuras):
             self._bloque(indice, *estructura)
+
+    def _expandir_expresiones(self):
+        """Divide cada campo en orden y conserva el contrato de los resultados por fila."""
+        nombres = tuple(nombre for nombre in NOMBRES_EXPRESIONES if nombre in self.data)
+        if not nombres or nombres != NOMBRES_EXPRESIONES[:len(nombres)]:
+            return None  # El contrato HTTP rechaza campos ausentes o fuera de orden.
+        if hasattr(self.data, "getlist") and any(len(self.data.getlist(n)) != 1 for n in nombres):
+            return None  # Conservar los campos repetidos para el diagnóstico habitual.
+        valores = [self.data[nombre] for nombre in nombres]
+        if not any(_SEPARADORES.search(texto) for texto in valores):
+            return None
+
+        filas = []
+        for nombre, texto in zip(nombres, valores):
+            # Un campo agregado y dejado en blanco conserva su error de campo vacío.
+            tramos = (texto,) if not _SEPARADORES.search(texto) else (
+                limpio for tramo in _TRAMOS.finditer(texto) if (limpio := tramo[0].strip())
+            )
+            for tramo in tramos:
+                if len(filas) == EXPRESIONES_MAXIMAS:
+                    return nombre  # Conservar íntegro el pegado para corregirlo.
+                filas.append(tramo)
+
+        datos = self.data.copy()
+        for nombre in nombres:
+            del datos[nombre]
+        for nombre, texto in zip(NOMBRES_EXPRESIONES, filas or [""]):
+            datos[nombre] = texto
+        self.data = datos
+        return None
 
     @property
     def opciones_abiertas(self):
@@ -366,6 +401,9 @@ class ExpresionMatricialForm(FormularioCeldas):
                 self.add_error(None, "No se puede eliminar esa expresión.")
                 return datos
             datos["estado"] = self._estado(simbolos, datos.get("metodo"))
+            return datos
+        if self.campo_excedido:
+            self.add_error(self.campo_excedido, f"Escribe hasta {EXPRESIONES_MAXIMAS} expresiones entre todos los campos.")
             return datos
         if len(self.expresiones) == 1 and not datos["expresion"]:
             self.add_error("expresion", "Escribe una expresión.")
