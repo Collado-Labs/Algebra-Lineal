@@ -1,0 +1,47 @@
+{% comment %}Mensajes del cuaderno compartidos por sus páginas: lo hecho, archivo apartado, no disponible y confirmaciones de eliminar (resoluciones, con todos los lugares donde se usan, y ejercicios).{% endcomment %}
+{% if hecho %}<p class="cuaderno-hecho" role="status" data-hecho>{{ hecho }}</p>{% endif %}
+{% if apartado %}
+    <p class="cuaderno-nota" role="status">Encontramos el archivo del cuaderno dañado y lo apartamos sin borrarlo como <code>{{ apartado.name }}</code>. Desde ahora se anota en uno nuevo.</p>
+{% endif %}
+{% if no_disponible %}
+    <section class="cuaderno-nota cuaderno-nota-aviso" role="alert" aria-labelledby="no-disponible-titulo">
+        <h2 id="no-disponible-titulo" class="confirmation-title">No pudimos abrir el cuaderno</h2>
+        <p>{{ no_disponible }}</p>
+        <p><a href="{{ pagina }}">Intentar de nuevo</a></p>
+    </section>
+{% endif %}
+{% if confirmar %}
+    <form class="confirmation" method="post" action="{{ pagina }}" data-confirmacion tabindex="-1" aria-labelledby="eliminar-titulo">
+        {% csrf_token %}
+        <input type="hidden" name="filtros" value="{{ consulta_filtros }}">
+        <input type="hidden" name="volver" value="{{ volver }}">
+        <svg class="confirmation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="confirmation-body">
+            <h2 id="eliminar-titulo" class="confirmation-title">¿Eliminar {% if confirmar|length == 1 %}esta resolución{% else %}estas {{ confirmar|length }} resoluciones{% endif %} del cuaderno?</h2>
+            <ul class="cuaderno-confirmar">
+                {% for r in confirmar %}<li><input type="hidden" name="ids" value="{{ r.id }}"><strong>{{ r.nombre }}</strong>{% if r.lugares %}<span class="cuaderno-confirmar-lugares"> · se usa en {{ r.lugares|join:", " }}</span>{% else %}<span class="cuaderno-confirmar-lugares"> · suelta</span>{% endif %}</li>{% endfor %}
+            </ul>
+            <p>Desaparecen del cuaderno y de todos los ejercicios y proyectos que las usan. No se puede deshacer. Si solo quieres quitarlas de un ejercicio, usa <strong>Desvincular</strong>; para dejarlas fuera del PDF, el icono del documento.</p>
+            <div class="confirmation-actions">
+                <a class="btn btn-secondary" href="{{ volver }}" data-cancelar>Cancelar</a>
+                <button class="btn btn-primary cuaderno-peligro" type="submit" name="accion" value="eliminar_confirmado">Eliminar definitivamente</button>
+            </div>
+        </div>
+    </form>
+{% endif %}
+{% if confirmar_ejercicios %}
+    <form class="confirmation" method="post" action="{{ pagina }}" data-confirmacion tabindex="-1" aria-labelledby="eliminar-ejercicios-titulo">
+        {% csrf_token %}
+        <input type="hidden" name="filtros" value="{{ consulta_filtros }}">
+        <input type="hidden" name="volver" value="{{ volver }}">
+        <div class="confirmation-body">
+            <h2 id="eliminar-ejercicios-titulo" class="confirmation-title">¿Eliminar {% if confirmar_ejercicios|length == 1 %}«{{ confirmar_ejercicios.0.etiqueta }}»{% else %}estos {{ confirmar_ejercicios|length }} ejercicios{% endif %}?</h2>
+            <ul class="cuaderno-confirmar">{% for e in confirmar_ejercicios %}<li><input type="hidden" name="sel" value="{{ e.id }}">{{ e.etiqueta }}</li>{% endfor %}</ul>
+            <p>Se quitan su número, título y enunciado. Sus resoluciones siguen en el cuaderno (sueltas si no se usan en otro ejercicio). No se puede deshacer.</p>
+            <div class="confirmation-actions">
+                <a class="btn btn-secondary" href="{{ volver }}" data-cancelar>Cancelar</a>
+                <button class="btn btn-primary cuaderno-peligro" type="submit" name="accion" value="eliminar_ejercicios_confirmado">Eliminar</button>
+            </div>
+        </div>
+    </form>
+{% endif %}

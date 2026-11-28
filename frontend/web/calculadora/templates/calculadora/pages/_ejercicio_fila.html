@@ -1,0 +1,31 @@
+{% comment %}Un ejercicio del proyecto en un renglón: casilla para elegirlo (de la barra Organizar), asa, número, título y respuesta principal; a la derecha, documento, trabajar aquí y Editar. Sus resoluciones se despliegan debajo.{% endcomment %}
+<li class="hoja ejercicio" id="ejercicio-{{ e.id }}" data-orden="ejercicios" data-id="{{ e.id }}" data-estado="{% if e.resuelto %}resuelto{% else %}pendiente{% endif %}"{% if not e.incluir %} data-excluida{% endif %}{% if e.id == ejercicio_activo %} data-activo{% endif %}>
+    <header class="hoja-cabecera ejercicio-cabecera">
+        <input class="ejercicio-marca" type="checkbox" form="lote" name="sel" value="{{ e.id }}" data-marca-ejercicio aria-label="Elegir «{{ e.etiqueta }}» para Organizar"{% if e.id in lote.marcados %} checked{% endif %}>
+        <span class="ejercicio-numero" aria-hidden="true">{{ e.numero|default:"·" }}</span>
+        <div class="hoja-titulos">
+            <h3 class="hoja-titulo" id="ejercicio-{{ e.id }}-titulo"><span class="sr-only">{% if e.numero %}Ejercicio {{ e.numero }}{% endif %}{% if e.nombre and e.numero %}: {% endif %}</span>{% if e.nombre %}{{ e.nombre }}{% elif e.numero %}<span aria-hidden="true">Ejercicio {{ e.numero }}</span>{% else %}Ejercicio sin título{% endif %}</h3>
+            <p class="hoja-detalle">{% if e.id == ejercicio_activo %}<strong class="proyecto-activo-insignia">Trabajando aquí</strong> · {% endif %}{% if e.resuelto %}<span class="ejercicio-respuesta">{{ e.resoluciones.0.resumen|default:e.resoluciones.0.nombre }}</span>{% if e.resoluciones|length > 1 %} · +{{ e.resoluciones|length|add:-1 }}{% endif %}{% else %}Sin resolución{% endif %}</p>
+        </div>
+        <div class="hoja-controles">
+            {% include "calculadora/pages/_asa.html" with tabla="ejercicios" objeto_id=e.id nombre=e.etiqueta %}
+            {% include "calculadora/pages/_incluir.html" with tabla="ejercicios" ident=e.id activo=e.incluir nombre=e.etiqueta %}
+            {% if e.id != ejercicio_activo %}<button class="hoja-activar" type="submit" form="activar-{{ e.id }}" data-clave="activar-{{ e.id }}" title="Trabajar aquí: lo que calcules se añadirá a este ejercicio con un clic"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg><span class="sr-only">Trabajar en «{{ e.etiqueta }}»</span></button>{% else %}<span class="hoja-activar-hueco" aria-hidden="true"></span>{% endif %}
+            {% include "calculadora/pages/_ejercicio_editar.html" with en_proyecto=True %}
+        </div>
+    </header>
+    {% if e.enunciado or e.resoluciones %}
+        {# Plegado salvo en el ejercicio activo: en proyectos largos cada ejercicio ocupa un renglón. #}
+        <details class="ejercicio-detalle" id="ejercicio-{{ e.id }}-detalle"{% if e.id == ejercicio_activo %} open{% endif %}>
+            <summary>{% if e.resoluciones %}{{ e.resoluciones|length }} resoluci{{ e.resoluciones|length|pluralize:"ón,ones" }}{% if e.incluidas < e.resoluciones|length %} · {{ e.incluidas }} en el documento{% endif %}{% else %}Enunciado{% endif %}<span class="sr-only"> de «{{ e.etiqueta }}»</span></summary>
+            {% if e.enunciado %}<p class="hoja-enunciado">{{ e.enunciado|linebreaksbr }}</p>{% endif %}
+            {% if e.resoluciones %}
+                <ol class="hoja-pasos" data-orden-lista="referencias" data-ejercicio="{{ e.id }}">
+                    {% for r in e.resoluciones %}{% include "calculadora/pages/_resolucion.html" with nivel=4 en_proyecto=True %}{% endfor %}
+                </ol>
+            {% endif %}
+        </details>
+    {% elif e.id == ejercicio_activo %}
+        <p class="hoja-vacia">Resuélvelo con cualquier herramienta y pulsa <strong>Añadir a {{ e.corta }}</strong> en el aviso del resultado.</p>
+    {% endif %}
+</li>

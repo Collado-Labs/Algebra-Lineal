@@ -1,0 +1,26 @@
+{% comment %}Vista previa de Organizar antes de aplicar: qué ejercicios y cuántos, y lo que no se entendió. Eliminar siempre pasa por aquí.{% endcomment %}
+<form class="confirmation proyecto-lote" method="post" action="{{ pagina }}" data-confirmacion tabindex="-1" aria-labelledby="lote-titulo">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="lote"><input type="hidden" name="proyecto" value="{{ proyecto.id }}">
+    <input type="hidden" name="numeros" value="{{ lote.texto }}"><input type="hidden" name="operacion" value="{{ lote.operacion }}">
+    <input type="hidden" name="destino_{{ lote.operacion }}" value="{{ lote.destino }}"><input type="hidden" name="nueva_seccion" value="{{ lote.nueva_seccion }}">
+    {% for id in lote.marcados %}<input type="hidden" name="sel" value="{{ id }}">{% endfor %}
+    <input type="hidden" name="confirmado" value="1"><input type="hidden" name="volver" value="{{ pagina }}">
+    <div class="confirmation-body">
+        <h2 id="lote-titulo" class="confirmation-title">{% if lote.errores %}Revisa la selección{% else %}{{ lote.rotulo }}{% if lote.destino_nombre %}: «{{ lote.destino_nombre }}»{% endif %} · {{ lote.elegidos|length }} ejercicio{{ lote.elegidos|length|pluralize }}{% endif %}</h2>
+        {% if lote.errores %}<ul class="proyecto-lote-errores" role="alert">{% for error in lote.errores %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        {% if lote.avisos %}<ul class="proyecto-lote-avisos">{% for aviso in lote.avisos %}<li>{{ aviso }}</li>{% endfor %}</ul>{% endif %}
+        {% if lote.elegidos %}<p class="proyecto-lote-lista">{% for e in lote.elegidos %}<span>{{ e.corta }}</span>{% endfor %}</p>{% endif %}
+        {% if lote.operacion == "eliminar" and not lote.errores %}<p>Se quitan su número, título y enunciado. Sus resoluciones siguen en el cuaderno (sueltas si no se usan en otro ejercicio). No se puede deshacer.</p>{% endif %}
+        <div class="confirmation-actions">
+            <a class="btn btn-secondary" href="{{ pagina }}" data-cancelar>{% if lote.errores %}Corregir{% else %}Cancelar{% endif %}</a>
+            {% if not lote.errores %}
+                {% if lote.operacion == "eliminar" %}
+                    <button class="btn btn-primary cuaderno-peligro" type="submit" name="confirmado_eliminar" value="1">Eliminar {{ lote.elegidos|length }} ejercicio{{ lote.elegidos|length|pluralize }}</button>
+                {% else %}
+                    <button class="btn btn-primary" type="submit">Aplicar a {{ lote.elegidos|length }} ejercicio{{ lote.elegidos|length|pluralize }}</button>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</form>
