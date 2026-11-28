@@ -16,19 +16,22 @@ def metodos_iterativos(request):
     else:
         form = SistemasIterativosForm(initial=iniciales_ejemplo(request.GET.get("ejemplo")))
 
-    resultado = None
+    resultado = datos = None
     if request.method == "POST" and form.is_valid():
         if ajustar:
             form = SistemasIterativosForm(initial=form.iniciales())
         else:
             try:
-                resultado = resolver_iterativos_web(form.cleaned_data["entrada"])
+                entrada = form.cleaned_data["entrada"]
+                resultado = resolver_iterativos_web(entrada)
+                datos = {"metodo": entrada["metodo"], "sistema_original": entrada["sistema_original"],
+                         "tolerancia_original": entrada["tolerancia_original"], "resultado": resultado}
             except ValueError as error:
                 # Como en Reducción por filas: el error del texto queda junto a las ecuaciones.
                 form.add_error("sistema" if form.cleaned_data.get("tipo_entrada") == "sistema" else None, str(error))
 
     return TemplateResponse(request, "calculadora/modules/iterativos/index.html", {
-        "form": form, "iterativos": resultado, "perfiles_teclado": perfiles_para("sistema", "numerico"),
+        "form": form, "iterativos": resultado, "datos_iterativos": datos, "perfiles_teclado": perfiles_para("sistema", "numerico", "tolerancia"),
         # Menú de edición (clic derecho en A o b), como los ejemplos de Conjuntos.
         "ejemplos": lista_ejemplos(), "ejemplos_detalle": "sustituye el sistema",
     })

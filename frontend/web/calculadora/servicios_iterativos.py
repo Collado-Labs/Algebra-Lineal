@@ -8,6 +8,7 @@ escriben exactos, como en el resto de Ax = b. Aquí no se calcula nada del méto
 from fractions import Fraction
 
 from backend.sistemas_iterativos import METODOS, resolver_iterativo
+from backend.tolerancias import ABSOLUTO
 
 from .presentacion_numerica import formatear_exacto
 from .servicios_ecuaciones import incognitas
@@ -58,19 +59,27 @@ def resolver_iterativos_web(entrada):
     metodos = dict(METODOS) if metodo == COMPARAR_ITERATIVOS else (metodo,)
     calculos = [
         resolver_iterativo(entrada["a"], entrada["b"], nombre, inicial=entrada["inicial"],
-                           tolerancia=entrada["tolerancia"], max_iteraciones=entrada["max_iteraciones"])
+                           tolerancia=entrada["tolerancia"], max_iteraciones=entrada["max_iteraciones"],
+                           criterio=entrada.get("criterio", ABSOLUTO))
         for nombre in metodos
     ]
     a = [[Fraction(valor) for valor in fila] for fila in entrada["a"]]
     b = [Fraction(valor) for valor in entrada["b"]]
     resultados = [_presentar(calculo, a, b) for calculo in calculos]
     primero = calculos[0]
+    porcentual = primero.criterio == "porcentual"
+    magnitud = {ABSOLUTO: "Cambio máximo", "relativo": "Cambio relativo", "porcentual": "Cambio relativo porcentual"}[primero.criterio]
     return {
         "metodos": resultados,
         "comparar": len(resultados) > 1,
         "titulo": _titulo_comparacion(calculos) if len(calculos) > 1 else resultados[0]["titulo"],
         "variables": resultados[0]["variables"],
         "tolerancia": float(primero.tolerancia),
+        "criterio": primero.criterio, "magnitud": magnitud,
+        "tolerancia_visible": _magnitud_visible(primero.tolerancia, porcentual),
+        "tolerancia_residuo": float(primero.tolerancia_residuo),
+        "a_exacta": [[str(valor) for valor in fila] for fila in a],
+        "b_exacto": [str(valor) for valor in b],
         "limite": primero.limite,
         "inicial": primero.iteraciones[0].x,
         "dominancia": [
@@ -90,7 +99,7 @@ def _frase(calculo):
     k = calculo.final.k
     if calculo.estado == "convergio":
         return f"converge en {_iteraciones(k)}"
-    if calculo.estado == "limite":
+    if calculo.estado in ("limite", "criterio_indefinido"):
         return f"no converge en {_iteraciones(k)}"
     return f"supera el rango numérico en la iteración {k + 1}"
 
@@ -112,10 +121,14 @@ def _mensaje(calculo):
         # Residuo inicial cero no implica quedarse quieto: el redondeo del despeje puede mover x.
         if calculo.iteraciones[0].norma_residuo == 0 and final.k == 1 and final.cambio == 0:
             return "x⁽⁰⁾ ya satisface Ax = b: la iteración 1 lo confirma con cambio 0."
+        if calculo.criterio != ABSOLUTO:
+            return f"En la iteración {final.k}, el cambio relativo y el residuo cumplen sus tolerancias."
         return f"En la iteración {final.k}, el cambio máximo y el residuo son menores que la tolerancia."
     if calculo.estado == "rango":
         return (f"En la iteración {final.k + 1} se superó el rango numérico. "
                 "Se muestra el último vector con valores finitos.")
+    if calculo.estado == "criterio_indefinido":
+        return "El cambio relativo está indefinido con este vector. Revisa la escala o elige el criterio absoluto."
     mensaje = "El cambio y el residuo no bajaron ambos de la tolerancia: se muestra la última aproximación."
     if final.k > 1 and final.cambio > calculo.iteraciones[1].cambio:
         mensaje += " El cambio máximo crece: las aproximaciones se alejan entre sí."
@@ -130,9 +143,21 @@ def _termino_despejado(coeficiente):
     return ("+" if coeficiente < 0 else "−"), factor
 
 
+def _magnitud_visible(valor, porcentual):
+    if valor is None:
+        return None
+    ampliado = Fraction(valor) * 100 if porcentual else valor
+    try:
+        return float(ampliado)
+    except OverflowError:
+        return None
+
+
 def _presentar(calculo, a, b):
     variables = incognitas(len(a))
-    filas = [{"k": paso.k, "x": paso.x, "cambio": paso.cambio, "norma": float(paso.norma_residuo)}
+    filas = [{"k": paso.k, "x": paso.x, "cambio": paso.cambio, "norma": float(paso.norma_residuo),
+              "valor_criterio": float(paso.valor_criterio) if paso.valor_criterio is not None else None,
+              "medida_visible": _magnitud_visible(paso.valor_criterio, calculo.criterio == "porcentual")}
              for paso in calculo.iteraciones]
     # Sin JavaScript se lee la iteración 1; sistemas_iterativos.js sustituye después los valores.
     anterior, actual = filas[0]["x"], filas[min(1, len(filas) - 1)]["x"]
@@ -151,11 +176,11 @@ def _presentar(calculo, a, b):
                     for i, r in enumerate(calculo.final.residuo)]
     return {
         "clave": calculo.metodo, "metodo": dict(METODOS)[calculo.metodo],
-        "estado": calculo.estado, "frase": _frase(calculo), "mensaje": _mensaje(calculo),
+        "estado": calculo.estado, "convergio": calculo.estado == "convergio", "frase": _frase(calculo), "mensaje": _mensaje(calculo),
         "titulo": f"{dict(METODOS)[calculo.metodo]} {_frase(calculo)}",
         "variables": variables, "filas": filas, "final": filas[-1],
         # Los mismos criterios estrictos y exactos del motor, para leerlos junto a ε.
-        "cumple_cambio": calculo.final.cambio is not None and Fraction(calculo.final.cambio) < calculo.tolerancia,
-        "cumple_residuo": calculo.final.norma_residuo < calculo.tolerancia,
+        "cumple_cambio": calculo.final.valor_criterio is not None and calculo.final.valor_criterio < calculo.tolerancia,
+        "cumple_residuo": calculo.final.norma_residuo < calculo.tolerancia_residuo,
         "despejes": despejes, "verificacion": verificacion,
     }

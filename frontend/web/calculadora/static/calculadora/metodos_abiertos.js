@@ -26,10 +26,13 @@ window.metodosAbiertos = (() => {
         nodo("dt", "", nombre), nodo("dd", "", `${relacion(n, x)} ${menos(n(x))}`))));
     // Cada medida se compara con la tolerancia; el color solo acompaña a «cumple» / «no cumple».
     function comprobacion(medidas, tolerancia, { n }) {
-        return nodo("ul", "abierto-comprobacion", ...medidas.map(([nombre, x]) => {
-            const cumple = x <= tolerancia;
+        return nodo("ul", "abierto-comprobacion", ...medidas.map(([nombre, x, umbral = tolerancia, presentar]) => {
+            const cumple = x !== null && x <= umbral;
+            const texto = x === null ? "no evaluable · " : presentar
+                ? presentar(x) + (cumple ? " ≤ " : " > ") + presentar(umbral) + " · "
+                : relacion(n, x) + " " + menos(n(x)) + (cumple ? " ≤ " : " > ") + n(umbral) + " · ";
             const item = nodo("li", "", nodo("span", "", nombre),
-                nodo("span", "abierto-linea", `${relacion(n, x)} ${menos(n(x))} ${cumple ? "≤" : ">"} ${n(tolerancia)} · `,
+                nodo("span", "abierto-linea", texto,
                     nodo("strong", "", cumple ? "cumple" : "no cumple")));
             item.dataset.cumple = cumple;
             return item;
@@ -47,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!form) return;
     // Ejemplos precargados: cada botón trae sus campos; los ajustes que no nombra vuelven a su valor inicial.
     document.querySelectorAll("[data-ejemplo]").forEach(boton => boton.addEventListener("click", () => {
-        const campos = { precision: "0.0001", ...JSON.parse(boton.dataset.ejemplo) };
+        const campos = { criterio: "absoluto", precision: "0.0001", ...JSON.parse(boton.dataset.ejemplo) };
         for (const [nombre, valor] of Object.entries(campos)) {
             const campo = form.elements.namedItem(nombre);
             if (!campo) continue;

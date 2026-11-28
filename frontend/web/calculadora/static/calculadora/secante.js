@@ -26,12 +26,21 @@
             const margen = Math.max((b - a) / 4, Math.abs(a) * 1e-8, 1e-8);
             return [a - margen, b + margen];
         },
-        paso(p, { formato }, { ultimo, resultado }) {
+        paso(p, { formato, medir, nombreCriterio }, { ultimo, resultado }) {
             const tolerancia = resultado.tolerancia;
+            const relativo = resultado.criterio && resultado.criterio !== "absoluto";
+            const umbralResiduo = resultado.tolerancia_residuo ?? tolerancia;
             const lectura = formato([p.anterior, p.actual, p.siguiente, p.fanterior, p.factual,
                 p.numerador ?? 0, p.denominador, p.residuo, p.error_absoluto, tolerancia]);
             const { n, r } = lectura, v = x => menos(n(x));
             const k0 = subindice(p.i - 1), k1 = subindice(p.i), m = subindice(p.i + 1);
+            const medidas = [
+                relativo ? [nombreCriterio, p.valor_criterio, tolerancia, medir]
+                    : ["Error absoluto |x" + m + " − x" + k1 + "|", p.error_absoluto],
+                ["Residuo |f(x" + m + ")|", p.residuo, umbralResiduo],
+            ];
+            const detalleRelativo = [nombreCriterio + " " + medir(p.valor_criterio) + " · umbral " + medir(tolerancia),
+                "Residuo absoluto " + r(p.residuo) + " · umbral " + n(umbralResiduo)];
             // «=» solo si todas las cifras sustituidas son exactamente las almacenadas.
             const exacta = (...xs) => xs.every(x => relacion(n, x) === "=") ? "=" : "≈";
             const operaciones = p.numerador === null ? [] : [linea(
@@ -50,8 +59,8 @@
                             ...fraccion(`${operando(v(p.factual))} · (${v(p.actual)} − ${operando(v(p.anterior))})`,
                                 `${v(p.factual)} − ${operando(v(p.fanterior))}`))),
                     bloque("Operaciones", ...operaciones, nueva(`x${m}`, p.siguiente, lectura)),
-                    bloque(`Comprobación con tolerancia ${n(tolerancia)}`, comprobacion(
-                        [[`Error absoluto |x${m} − x${k1}|`, p.error_absoluto], [`Residuo |f(x${m})|`, p.residuo]], tolerancia, lectura)),
+                    bloque(relativo ? "Comprobación del cambio y el residuo" : "Comprobación con tolerancia " + n(tolerancia), comprobacion(
+                        medidas, tolerancia, lectura)),
                     ultimo ? `Se detiene: ${resultado.mensaje}`
                         : `Continúa: se desplazan los puntos (xₙ₋₁ ← x${k1}, xₙ ← x${m}); la siguiente secante une P${k1} y P${m}.`,
                 ],
@@ -60,7 +69,7 @@
                     `x${m} = ${v(p.actual)} − [${operando(v(p.factual))} · (${v(p.actual)} − ${operando(v(p.anterior))})] / [${v(p.factual)} − ${operando(v(p.fanterior))}] ${r(p.siguiente)}`,
                     ...(p.numerador === null ? [] : [`Numerador ${r(p.numerador)}; denominador f(x${k1}) − f(x${k0}) ${r(p.denominador)}.`]),
                     `El corte de la recta secante que une P${k0} y P${k1} con el eje x es la siguiente aproximación.`],
-                error: [`Error absoluto |x${m} − x${k1}| ${r(p.error_absoluto)}`, `Residuo |f(x${m})| ${r(p.residuo)}`,
+                error: relativo ? detalleRelativo : [`Error absoluto |x${m} − x${k1}| ${r(p.error_absoluto)}`, `Residuo |f(x${m})| ${r(p.residuo)}`,
                     `Tolerancia ${n(tolerancia)}: deben cumplirla ambos.`],
                 parada: [ultimo ? resultado.mensaje : `Continúa con x${k1} y x${m}: todavía no se cumplen las dos condiciones de parada.`],
                 puntos: { x: [p.anterior, p.actual, p.siguiente], y: [p.fanterior, p.factual, p.fsiguiente],

@@ -2,13 +2,24 @@
 
 from .funciones_reales import finito
 from .resultados_raices import ClasificacionRaices as Clasificacion
+from .tolerancias import ABSOLUTO, validar_criterio
 
 
 TOLERANCIA = 0.0001
 MAX_ITERACIONES = 200
 
 
-def preparar_intervalo(funcion, a, b, tolerancia, max_iteraciones, magnitud="precisión"):
+def validar_tolerancia_raices(tolerancia, criterio, magnitud="tolerancia"):
+    validar_criterio(criterio)
+    tolerancia = finito(tolerancia)
+    if criterio == ABSOLUTO and not 0 < tolerancia <= TOLERANCIA:
+        raise ValueError(f"La {magnitud} debe ser positiva y no mayor que 0.0001.")
+    if tolerancia <= 0:
+        raise ValueError(f"La {magnitud} debe ser positiva.")
+    return tolerancia
+
+
+def preparar_intervalo(funcion, a, b, tolerancia, max_iteraciones, magnitud="precisión", *, criterio=ABSOLUTO):
     """Valida los parámetros de un método cerrado y comprueba si puede comenzar en [a, b].
 
     Devuelve `(inicial, tolerancia, impedimento)`. `inicial` guarda a, b y sus imágenes (None si
@@ -16,11 +27,10 @@ def preparar_intervalo(funcion, a, b, tolerancia, max_iteraciones, magnitud="pre
     `(estado, clasificacion, mensaje)` si el dominio, la continuidad o los signos de los extremos
     lo impiden. Parámetros inválidos lanzan ValueError; `magnitud` nombra la tolerancia en el mensaje.
     """
-    a, b, tolerancia = finito(a), finito(b), finito(tolerancia)
+    a, b = finito(a), finito(b)
+    tolerancia = validar_tolerancia_raices(tolerancia, criterio, magnitud)
     if a >= b:
         raise ValueError("El extremo a debe ser menor que b.")
-    if not 0 < tolerancia <= TOLERANCIA:
-        raise ValueError(f"La {magnitud} debe ser positiva y no mayor que 0.0001.")
     if type(max_iteraciones) is not int or not 1 <= max_iteraciones <= 1000:
         raise ValueError("El máximo de iteraciones debe ser un entero entre 1 y 1000.")
     finito(b - a)

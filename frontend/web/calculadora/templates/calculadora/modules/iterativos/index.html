@@ -48,7 +48,9 @@
 {% endblock %}
 
 {% block axb_js %}
+    <script src="{% static 'calculadora/tolerancia.js' %}" defer></script>
     {% if iterativos %}
+    {{ datos_iterativos|json_script:"datos-iterativos" }}
     <script src="{% static 'calculadora/numeros.js' %}" defer></script>
     <script src="{% static 'calculadora/vendor/plotly-basic-4.1.2.min.js' %}" defer></script>
     <script src="{% static 'calculadora/vendor/plotly-locale-es-4.1.2.js' %}" defer></script>

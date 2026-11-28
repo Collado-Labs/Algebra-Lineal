@@ -4,24 +4,28 @@
     resumen: r => ({ nombre: "xr", x: r.xr, fx: r.fxr }),
     historial: { metrica: "Error absoluto", tolerancia: "Tolerancia", valor: r => r.error_absoluto,
         criterio: "El criterio se cumple si el error absoluto no supera la tolerancia y un cambio de signo confirma la raíz, o si f(xr) = 0." },
-    paso(p, { formato, signo }, { ultimo, resultado }) {
+    paso(p, { formato, signo, medir, nombreCriterio }, { ultimo, resultado }) {
         const { n, r } = formato([p.a, p.b, p.xr, p.nuevo_a, p.nuevo_b]);
         const tolerancia = resultado.tolerancia;
         const fijo = p.sustituido === "a" ? "b" : "a";
         const e = formato([p.error_absoluto ?? 0, tolerancia]);
         const error = [p.error_absoluto === null ? "Ea no disponible: primera aproximación." : `Ea ${e.r(p.error_absoluto)}`,
             `Tolerancia: ${e.n(tolerancia)}`];
+        const relativo = resultado.criterio && resultado.criterio !== "absoluto";
+        const descripcion = nombreCriterio + " " + medir(p.valor_criterio);
+        if (relativo) error.splice(1, 1, descripcion, "Umbral " + medir(tolerancia));
         const parada = [];
-        if (p.fxr === 0) parada.push("Se detiene: f(xr) = 0 en aritmética de máquina.");
+        if (p.fxr === 0) parada.push(resultado.mensaje);
         else {
             if (p.error_absoluto === null) parada.push("Aún no hay dos aproximaciones para comparar.");
-            else if (!p.cumple_tolerancia) parada.push("Ea supera la tolerancia.");
+            else if (relativo && p.valor_criterio === null) parada.push("El cambio relativo queda indefinido.");
+            else if (!p.cumple_tolerancia) parada.push(relativo ? "El cambio relativo supera la tolerancia." : "Ea supera la tolerancia.");
             else {
-                const prueba = formato([p.xr, p.prueba]).r(p.prueba);
-                parada.push("Ea cumple la tolerancia.", `Punto de prueba ${prueba}: a no más de una tolerancia de xr.`);
+                const prueba = p.prueba === null ? "no disponible" : formato([p.xr, p.prueba]).r(p.prueba);
+                parada.push(relativo ? "El cambio relativo cumple la tolerancia." : "Ea cumple la tolerancia.", `Punto de prueba ${prueba}: radio en x ${formato([p.tolerancia_prueba ?? tolerancia]).n(p.tolerancia_prueba ?? tolerancia)}.`);
                 if (p.confirmada) parada.push(p.f_prueba === 0 ? "f(prueba) = 0." : "f(prueba) y f(xr) tienen signos opuestos.",
                     "Raíz confirmada entre xr y el punto de prueba.");
-                else parada.push("f(prueba) y f(xr) tienen el mismo signo.",
+                else if (p.f_prueba !== null) parada.push("f(prueba) y f(xr) tienen el mismo signo.",
                     "Sin confirmación de una raíz cercana.", "El mismo signo tampoco descarta raíces intermedias.");
             }
             parada.push(p.confirmada ? "Se detiene: convergencia verificada."
@@ -37,7 +41,7 @@
                     : `f(xr) tiene el signo de f(${p.sustituido}) (${signo(p.fxr)}): xr reemplaza al extremo ${p.sustituido}; ${fijo} se queda.`,
                 parada.at(-1) === "Continúa."
                     ? (p.error_absoluto === null ? "Continúa: aún no hay dos aproximaciones que comparar." : `Continúa: Ea ${e.r(p.error_absoluto)}.`)
-                    : parada.at(-1)],
+                    : parada.at(-1), ...(relativo ? [descripcion] : [])],
             valores: [`xr ${r(p.xr)}`, "Corte de la secante con el eje x."],
             signos: p.fxr === 0 ? ["f(xr) = 0 (cero)."]
                 : [`f(${p.sustituido}) y f(xr) tienen el mismo signo (${signo(p.fxr)}).`,

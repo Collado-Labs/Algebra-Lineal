@@ -49,6 +49,7 @@ ASSETS_LOCALES = (
 
 
 NAMESPACE_PERMITIDOS = (
+    "http://www.w3.org/1998/math/mathml",
     "http://www.w3.org/2000/svg",
     "http://www.w3.org/1999/xlink",
 )

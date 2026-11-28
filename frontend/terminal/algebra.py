@@ -11,7 +11,8 @@ from backend.expresiones_matriciales.parser import analizar_entrada, nombre_vali
 from backend.operandos import ARIDAD_VECTORES, OPERANDOS_MAXIMOS, exigir_aridad, nombre_matriz
 from backend.parser_sistemas import convertir_a_numero, parsear_sistema
 from backend.presupuesto_sistemas import validar_dimensiones
-from backend.sistemas_iterativos import ITERACIONES_MAXIMAS
+from backend.sistemas_iterativos import ITERACIONES_MAXIMAS, TOLERANCIA
+from backend.tolerancias import leer_tolerancia
 from backend.vectores import nombres_generadores
 from frontend.web.calculadora.forms import SistemaForm
 from frontend.web.calculadora.forms_determinantes import (
@@ -246,9 +247,8 @@ def iterativos(datos):
         if texto:
             _validar_vector(texto, decimal, "inicial_iterativo", orden or None, False)
 
-    def validar_tolerancia(texto, decimal):
-        if texto and convertir_a_numero(_normalizar(texto, decimal), limitar_entrada=True) <= 0:
-            raise ValueError("La tolerancia debe ser positiva.")
+    def validar_tolerancia(texto, _decimal):
+        leer_tolerancia(texto, predeterminada=TOLERANCIA, admitir_fraccion=True)
 
     def validar_iteraciones(texto, _decimal):
         if not texto:
@@ -265,7 +265,7 @@ def iterativos(datos):
         _bloque("@b", "Vector b", vector=True, componentes=orden or None),
         campo(form, "metodo"),
         campo(form, "inicial_iterativo", ayuda="Opcional. Vacío: vector de ceros.", verificar=validar_inicial),
-        campo(form, "tolerancia_iterativa", verificar=validar_tolerancia),
+        campo(form, "tolerancia_iterativa", ayuda="Admite 10⁻⁶, 1e-6 y 0,01%.", verificar=validar_tolerancia),
         campo(form, "max_iteraciones", verificar=validar_iteraciones),
     )
 
@@ -406,7 +406,7 @@ def preparar_algebra(herramienta, datos, decimal):
             salida["eleccion"] = firmar_matriz({k: str(v) for k, v in salida.items()})
         elif herramienta == "metodos-iterativos":
             salida["inicial_iterativo"] = " ".join(_vector(_normalizar(datos.get("inicial_iterativo", ""), decimal)))
-            salida["tolerancia_iterativa"] = _normalizar(datos.get("tolerancia_iterativa", ""), decimal)
+            salida["tolerancia_iterativa"] = datos.get("tolerancia_iterativa", "")
     return salida
 
 

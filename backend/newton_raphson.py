@@ -4,25 +4,26 @@ from fractions import Fraction
 
 from .derivacion_real import DerivadaReal
 from .funciones_reales import finito
-from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA
+from .metodos_cerrados import MAX_ITERACIONES, TOLERANCIA, validar_tolerancia_raices
 from .resultados_raices import ClasificacionRaices as Clasificacion
 from .resultados_raices import impedimento_paso_abierto
+from .tolerancias import ABSOLUTO, medida_relativa, motivo_cero
 
 
-def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIONES):
+def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERACIONES, *, criterio=ABSOLUTO):
     """Itera Newton-Raphson desde x₀ y devuelve un diccionario serializable con la tabla y su conclusión.
 
     La derivada se obtiene de `funcion` con `DerivadaReal`, así que solo admite el subconjunto
     derivable de `FuncionReal`; si no se puede, el `estado` es "derivacion". Parámetros inválidos
-    (tolerancia fuera de (0, 0.0001], iteraciones fuera de 1–1000) lanzan ValueError. El criterio
+    (tolerancia inválida o iteraciones fuera de 1–1000) lanzan ValueError. El criterio
     de convergencia es el mismo de `secante`: cero de máquina, o cambio y residuo dentro de la
     tolerancia sin objeción de `impedimento_paso_abierto`. A diferencia de Secante, el estado de
     Newton es una sola abscisa: repetir una aproximación anterior ya es un ciclo ("oscilacion").
     Estados y claves de cada fila: docs/newton-raphson.md.
     """
-    x0, tolerancia = finito(x0), finito(tolerancia)
-    if not 0 < tolerancia <= TOLERANCIA:
-        raise ValueError("La tolerancia debe ser positiva y no mayor que 0.0001.")
+    x0 = finito(x0)
+    tolerancia = validar_tolerancia_raices(tolerancia, criterio)
+    tolerancia_residuo = tolerancia if criterio == ABSOLUTO else TOLERANCIA
     if type(max_iteraciones) is not int or not 1 <= max_iteraciones <= 1000:
         raise ValueError("El máximo de iteraciones debe ser un entero entre 1 y 1000.")
     x, fx = x0, None
@@ -44,6 +45,8 @@ def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERA
                 "x": x if verificado is not None else None, "fx": verificado, "x0": x0,
                 "residuo": abs(verificado) if verificado is not None else None,
                 "tolerancia": tolerancia, "max_iteraciones": max_iteraciones,
+                "criterio": criterio, "tolerancia_residuo": tolerancia_residuo,
+                "valor_criterio": filas[-1]["valor_criterio"] if filas else None,
                 "iteraciones": filas, "intento_final": intento_final, "estado": estado,
                 "convergio": convergio, "mensaje": mensaje,
                 "error_absoluto": filas[-1]["error_absoluto"] if filas else None}
@@ -58,7 +61,7 @@ def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERA
         return resultado("dominio_inicial", str(error))
 
     if fx == 0:
-        return resultado("exacta", "El punto inicial ya da f(x₀) = 0 en aritmética de máquina.")
+        return resultado(*motivo_cero(criterio, x, "El punto inicial ya da f(x₀) = 0 en aritmética de máquina."))
     for i in range(1, max_iteraciones + 1):
         intento_final = {"i": i, "xn": x, "fxn": fx, "dfxn": None, "siguiente": None,
                          "fsiguiente": None, "residuo": None, "error_absoluto": None}
@@ -75,7 +78,8 @@ def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERA
             cambio = finito(abs(Fraction(nuevo) - Fraction(x)))
         except (ValueError, ArithmeticError):
             return resultado("divergencia", "La pendiente es demasiado pequeña respecto de f(x), o el salto excede el rango de máquina.")
-        intento_final.update(siguiente=nuevo, error_absoluto=cambio)
+        medida = cambio if criterio == ABSOLUTO else medida_relativa(cambio, nuevo)
+        intento_final.update(siguiente=nuevo, error_absoluto=cambio, valor_criterio=medida)
         try:
             fnuevo = finito(funcion(nuevo))
         except ValueError as error:
@@ -87,15 +91,17 @@ def newton_raphson(funcion, x0, tolerancia=TOLERANCIA, max_iteraciones=MAX_ITERA
         quieto = nuevo == x
         anterior, x, fx = x, nuevo, fnuevo
         if fx == 0:
-            return resultado("exacta", "f(x) = 0 en aritmética de máquina.")
+            return resultado(*motivo_cero(criterio, x, "f(x) = 0 en aritmética de máquina."))
         if quieto:
             return resultado("estancamiento", "La máquina repite la aproximación sin obtener cero; no se declara convergencia.")
         if repetido:
             return resultado("oscilacion", "Se repite una aproximación anterior: el método entró en un ciclo sin convergencia.")
-        if cambio <= tolerancia and abs(fx) <= tolerancia:
+        if medida is not None and medida <= tolerancia and abs(fx) <= tolerancia_residuo:
             impedimento = impedimento_paso_abierto(funcion, anterior, x)
             if impedimento:
                 return resultado(*impedimento)
-            return resultado("tolerancia", "El cambio y el residuo no superan la tolerancia solicitada.")
+            return resultado("tolerancia", "El cambio seleccionado y el residuo cumplen sus tolerancias.")
         visitados.add(x)
+    if medida is None:
+        return resultado("criterio_indefinido", "El cambio relativo queda indefinido; revisa la escala o elige el criterio absoluto.")
     return resultado("limite", "Se alcanzó el máximo de iteraciones sin cumplir el criterio de convergencia; puede haber divergencia u oscilación.")

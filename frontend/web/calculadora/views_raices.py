@@ -14,6 +14,7 @@ from backend.derivacion_real import DerivadaReal, natural
 from backend.resultados_raices import ClasificacionRaices as Clasificacion, evidencia_muestreo
 from .forms_raices import BiseccionForm, RaicesForm, ReglaFalsaForm, NewtonRaphsonForm, SecanteForm
 from .servicios_raices import muestrear, verificacion_inicial
+from .notacion_raices import vista_matematica
 from .teclados import perfiles_para
 
 
@@ -22,7 +23,18 @@ def _datos_raices(nombre, form, resultado):
              "clasificacion": resultado["clasificacion"] if resultado else
              Clasificacion.ENTRADA_INVALIDA if form.is_bound else None}
     if resultado:
-        datos.update(funcion=form.funcion_real.texto, clave=form.funcion_real.clave)
+        f = form.funcion_real
+        datos.update(funcion=f.texto, clave=f.clave, funcion_original=f.original,
+                     funcion_normalizada=f.expresion, miembros=f.miembros if len(f.miembros) == 2 else None)
+        datos.update(vista_matematica(f))
+        datos["tolerancia_original"] = form.cleaned_data["tolerancia_original"]
+        datos["criterio_nombre"] = dict(form.fields["criterio"].choices)[resultado["criterio"]]
+        datos["criterio_formula"] = {
+            "biseccion": "máx(|c − a|, |b − c|) / mín(|a|, |b|)",
+            "regla_falsa": "|xr actual − xr anterior| / |xr actual|",
+        }.get(nombre, "|x siguiente − x actual| / |x siguiente|")
+        if resultado["criterio"] == "porcentual":
+            datos["criterio_formula"] = "(" + datos["criterio_formula"] + ") × 100%"
     return datos
 
 
@@ -34,12 +46,12 @@ def _iniciales(request, campos):
 def _resolver(request, formulario, metodo, nombre):
     """Métodos cerrados. Al cambiar de método llegan función, intervalo y ajustes; el cálculo, no."""
     form = formulario(request.POST if request.method == "POST" else None,
-                      initial=_iniciales(request, ("funcion", "a", "b", "precision", "max_iteraciones")))
+                      initial=_iniciales(request, ("funcion", "a", "b", "precision", "max_iteraciones", "criterio")))
     resultado = verificacion = None
     if request.method == "POST" and form.is_valid():
         d = form.cleaned_data
         try:
-            resultado = metodo(form.funcion_real, d["a"], d["b"], d["precision"], d["max_iteraciones"])
+            resultado = metodo(form.funcion_real, d["a"], d["b"], d["precision"], d["max_iteraciones"], criterio=d["criterio"])
         except ValueError as error:
             form.add_error(None, str(error))
     datos = _datos_raices(nombre, form, resultado)
@@ -50,7 +62,7 @@ def _resolver(request, formulario, metodo, nombre):
             verificacion = verificacion_inicial(resultado["inicial"])
     return TemplateResponse(request, f"calculadora/modules/{nombre}/index.html", {
         "form": form, "resultado": resultado, "datos_raices": datos,
-        "verificacion": verificacion, "perfiles_teclado": perfiles_para("funcion-real"),
+        "verificacion": verificacion, "perfiles_teclado": perfiles_para("funcion-real", "tolerancia"),
     })
 
 
@@ -78,7 +90,7 @@ def explorar_funcion(request, derivar=False):
         puntos = muestrear(form.funcion_real, form.cleaned_data["a"], form.cleaned_data["b"])
     except ValueError as error:
         return JsonResponse({"error": str(error), "clasificacion": Clasificacion.ENTRADA_INVALIDA}, status=400)
-    respuesta = {**puntos, **evidencia_muestreo(puntos["y"])}
+    respuesta = {**puntos, **evidencia_muestreo(puntos["y"]), **vista_matematica(form.funcion_real)}
     if derivar:
         try:
             respuesta["derivada"] = DerivadaReal(form.funcion_real).texto
@@ -113,20 +125,20 @@ def _resolver_abierto(request, formulario, nombre, calcular, puntos):
     return TemplateResponse(request, f"calculadora/modules/{nombre}/index.html", {
         "form": form, "resultado": resultado, "datos_raices": datos,
         "funcion_natural": natural(form.funcion_real.arbol) if resultado else None,
-        "perfiles_teclado": perfiles_para("funcion-real"),
+        "perfiles_teclado": perfiles_para("funcion-real", "tolerancia"),
     })
 
 
 @require_http_methods(["GET", "POST"])
 def resolver_newton_raphson(request):
     return _resolver_abierto(request, NewtonRaphsonForm, "newton_raphson", lambda f, d: newton_raphson(
-        f, d["x0"], d["precision"], d["max_iteraciones"]), ("x0",))
+        f, d["x0"], d["precision"], d["max_iteraciones"], criterio=d["criterio"]), ("x0",))
 
 
 @require_http_methods(["GET", "POST"])
 def resolver_secante(request):
     return _resolver_abierto(request, SecanteForm, "secante", lambda f, d: secante(
-        f, d["x0"], d["x1"], d["precision"], d["max_iteraciones"]), ("x0", "x1"))
+        f, d["x0"], d["x1"], d["precision"], d["max_iteraciones"], criterio=d["criterio"]), ("x0", "x1"))
 
 
 def _redirigir(request, nombre):

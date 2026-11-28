@@ -62,18 +62,18 @@ class PruebasEntradaEdicion(SimpleTestCase):
                 self.assertEqual(parsear_sistema(texto, limitar_entrada=True), esperado)
 
     def test_sintaxis_real_rechazada(self):
-        for texto in ("X1 = 2", "x = 2", "y = 2", "z = 2", "3,14x1 = 2", EJEMPLO + ";", "1 2x1 = 3"):
+        for texto in ("x + x₁ = 2", "sin(x₁) = 0", "3,14x1 = 2", EJEMPLO + ";", "1 2x1 = 3"):
             with self.subTest(texto=texto), self.assertRaises(ValueError):
                 parsear_sistema(texto, limitar_entrada=True)
 
     def test_ayuda_y_placeholder_aceptados_y_asociados(self):
         respuesta = self.client.get("/matrices/reduccion/")
-        for texto in (EJEMPLO, "minúscula", "decimales con punto", "saltos de línea", "coma decimal", "vacío al final"):
+        for texto in (EJEMPLO, "x₁", "(1/2)x₁", "decimales con punto", "saltos de línea", "notación para todo el sistema"):
             self.assertContains(respuesta, texto)
         campo = next(e for e in Pagina(respuesta.content.decode()).elementos if e.get("name") == "sistema")
         self.assertIn("sistema-ayuda", campo["aria-describedby"].split())
         self.assertEqual(len(parsear_sistema(campo["placeholder"], limitar_entrada=True)), 3)
-        respuesta = self.client.post("/matrices/reduccion/", {"sistema": "X1=2", "metodo": "gauss"})
+        respuesta = self.client.post("/matrices/reduccion/", {"sistema": "x + x₁ = 2", "metodo": "gauss"})
         campo = next(e for e in Pagina(respuesta.content.decode()).elementos if e.get("name") == "sistema")
         self.assertEqual(campo["aria-describedby"].split(), ["sistema-ayuda", "id_sistema_error"])
 

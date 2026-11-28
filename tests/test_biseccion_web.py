@@ -45,14 +45,14 @@ class BiseccionWebTests(SimpleTestCase):
         from tests.test_teclado import Pagina
         r = self.client.get(RUTA)
         pagina = Pagina(r.content.decode())
-        self.assertEqual(set(pagina.json["math-keyboard-profiles"]), {"funcion-real"})
+        self.assertEqual(set(pagina.json["math-keyboard-profiles"]), {"funcion-real", "tolerancia"})
         self.assertEqual(len(pagina.teclados), 1)
         self.assertContains(r, "calculadora/teclado.js")
         from frontend.web.calculadora.forms_raices import BiseccionForm
         form = BiseccionForm()
         for campo in ("funcion", "a", "b"):
             self.assertIsNone(form[campo].value())
-        self.assertEqual(form["precision"].value(), .0001)
+        self.assertEqual(form["precision"].value(), "0.0001")
         self.assertEqual(form["max_iteraciones"].value(), 200)
         self.assertContains(r, "Introduce una función para")
         self.assertNotContains(r, "data-respuesta-errores")

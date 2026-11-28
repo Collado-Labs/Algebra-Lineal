@@ -28,6 +28,44 @@
     const listaGrafica = w => grafica(w)?.data?.[0]?.x?.length === 801 &&
         !q(w, "#grafica-estado").textContent.includes("Actualizando");
     const casos = [
+        ["Entrada de Word, edición de exponente y cota porcentual", async (w, frame) => {
+            const f = q(w, '[name="funcion"]');
+            f.focus();
+            const clip = new w.DataTransfer();
+            clip.setData("text/plain", "e(x/2) + sen(2x) = 3");
+            clip.setData("text/html", '<p>e<span style="vertical-align:super">(x/2)</span> + sen(2x) = 3</p>');
+            f.dispatchEvent(new w.ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clip }));
+            ok(f.value === "e^((x/2)) + sen(2x) = 3", "Word conserva el exponente");
+            await esperar(() => q(w, "#raices-vista-matematica msup mfrac"), "Exponente y fracción en MathML");
+
+            valor(w, "funcion", "e");
+            f.focus();
+            f.setSelectionRange(1, 1);
+            await esperar(() => q(w, '[data-insercion="^()"]'));
+            q(w, '[data-insercion="^()"]').click();
+            ok(f.value === "e^()" && f.selectionStart === 3 && w.document.activeElement === f, "Cursor en exponente");
+            f.setRangeText("x/2", 3, 3, "end");
+            f.dispatchEvent(new w.Event("input", { bubbles: true }));
+            ok(f.value === "e^(x/2)" && f.selectionStart === 6, "El exponente se puede editar");
+            valor(w, "funcion", "ln(x) + sen(x) = 1.2");
+            valor(w, "a", "1"); valor(w, "b", "2");
+            valor(w, "precision", "0,01%");
+            ok(q(w, '[name="criterio"]').value === "porcentual", "El sufijo selecciona el criterio");
+            w = await post(frame);
+            const { resultado: r, funcion_normalizada: f0 } = JSON.parse(q(w, "#datos-raices").textContent);
+            ok(r.convergio && r.precision === 0.0001 && f0.includes(" - ("), "La ecuación y tolerancia llegan al motor");
+            ok(q(w, "thead").textContent.includes("Cota del error relativo porcentual"), "Columna para la cota");
+            ok(q(w, ".raices-tabla tbody tr:last-child").textContent.includes("%"), "Cota porcentual en tabla");
+            await esperar(() => listaGrafica(w));
+            const raiz = w.document.documentElement;
+            for (const estilo of ["estudio", "minimalista", "chocolab", "belugacalc", "heyalgb"]) {
+                for (const tema of ["light", "dark"]) {
+                    raiz.dataset.estilo = estilo; raiz.dataset.theme = tema;
+                    await new Promise(resolve => w.requestAnimationFrame(resolve));
+                    ok(!q(w, "#raices-vista-matematica").hidden, "Fórmula visible en " + estilo + " " + tema);
+                }
+            }
+        }],
         ["Exponente compuesto y tangente abreviada en la gráfica y el cálculo", async (w, frame) => {
             valor(w, "funcion", "e^(1/x)+(2x/tanx)");
             await esperar(() => listaGrafica(w), "La función debe producir muestras");
