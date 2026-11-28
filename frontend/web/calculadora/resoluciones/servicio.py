@@ -5,6 +5,7 @@ no calculan nada. Un fallo del cuaderno nunca impide mostrar el resultado.
 """
 
 import logging
+import re
 from datetime import datetime
 
 from django.http import QueryDict
@@ -16,6 +17,8 @@ from .almacen import AlmacenFuturo, AlmacenNoDisponible, CuadernoLleno, ahora, a
 
 
 LOG = logging.getLogger(__name__)
+# Como en Operaciones: varias expresiones de un mismo campo se separan por línea o por «;».
+_SEPARADORES = re.compile(r"[;\r\n]")
 NO_DISPONIBLE = "El cuaderno no está disponible en este momento; este resultado no se guardó. Tus resoluciones anteriores siguen a salvo."
 
 
@@ -35,9 +38,10 @@ def nombre_por_defecto(herramienta, entrada):
     if valor("funcion"):
         detalle = f"f(x) = {valor('funcion')}"
     elif valor("expresion"):
-        # Expresiones múltiples: la primera y cuántas más la acompañan.
-        otras = sum(1 for clave in entrada if clave.startswith("expresion_") and valor(clave))
-        detalle = valor("expresion") + (f" (+{otras})" if otras else "")
+        # Expresiones múltiples (en varios campos o en líneas y «;» de uno): la primera y cuántas más.
+        campos = sorted(c for c in entrada if c == "expresion" or c.startswith("expresion_"))
+        expresiones = [t.strip() for c in campos for t in _SEPARADORES.split((entrada[c] or [""])[0]) if t.strip()]
+        detalle = " ".join(expresiones[0].split()) + (f" (+{len(expresiones) - 1})" if len(expresiones) > 1 else "")
     elif valor("sistema") and valor("tipo_entrada") != "matriz":
         detalle = valor("sistema")
     elif valor("numero"):
@@ -132,10 +136,11 @@ def abrir(valor, resolver_match):
     for clave, valores in doc["entrada"].items():
         datos.setlist(clave, valores)
     abierta.update(datos=datos, documento=doc)
-    if doc["herramienta"]["esquema"] != registro.ADAPTADORES[ruta].esquema:
+    adaptador, esquema = registro.ADAPTADORES[ruta], doc["herramienta"]["esquema"]
+    if not adaptador.lee(esquema):
         return abierta | {"estado": "antiguo"}
     try:
-        abierta["resultado"] = contrato.decodificar(doc["resultado"])
+        abierta["resultado"] = adaptador.actualizar(contrato.decodificar(doc["resultado"]), esquema)
     except (ValueError, TypeError, ZeroDivisionError, ArithmeticError):
         return abierta | {"estado": "danado"}
     return abierta | {"estado": "abierta"}

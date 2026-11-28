@@ -9,6 +9,8 @@ Para incorporar una herramienta basta con añadir su ``Adaptador``:
 - ``principal``: la clave cuya presencia indica que hubo un resultado.
 - ``esquema``: súbelo cuando cambie la forma de esas claves; los documentos anteriores se
   abrirán con sus datos y sin resultado, ofreciendo calcular de nuevo.
+- ``anteriores``: ``{esquema: función}`` que lee el resultado de un esquema anterior con el
+  significado con el que se calculó (nunca recalcula). Encadena hasta el esquema actual.
 - ``ignorar``: campos de presentación que no cambian la matemática (no cuentan en la huella).
 - ``formulario(form_de_la_vista, datos, resultado)``: el formulario de la página reabierta.
   Por defecto, el mismo tipo de formulario ligado a los datos guardados.
@@ -52,6 +54,7 @@ class Adaptador:
     grafica: Callable | None = None
     preparar: Callable | None = None
     errores_parciales: bool = False
+    anteriores: dict = field(default_factory=dict)
 
     def es_valida(self, contexto):
         """Hubo resultado, no espera una confirmación de costo y el formulario no tiene errores."""
@@ -65,6 +68,17 @@ class Adaptador:
         if self.preparar is not None:
             return self.preparar(contexto)
         return {clave: contexto.get(clave) for clave in self.claves}
+
+    def lee(self, esquema):
+        """Si un documento de ese esquema se puede mostrar tal como se calculó."""
+        return esquema == self.esquema or (isinstance(esquema, int) and all(
+            version in self.anteriores for version in range(esquema, self.esquema)))
+
+    def actualizar(self, resultado, esquema):
+        """El resultado de un esquema anterior en la forma actual, con su significado histórico."""
+        for version in range(esquema, self.esquema):
+            resultado = self.anteriores[version](resultado)
+        return resultado
 
     def resumir(self, contexto):
         try:
@@ -146,9 +160,23 @@ def _resumen_expresiones(contexto):
     return texto if errores else f"{len(filas)} expresiones resueltas"
 
 
+def _raices_v1(resultado):
+    """Antes de los criterios relativos (#167) toda parada era absoluta: se lee así, sin recalcular."""
+    historico = {"criterio": "absoluto", "valor_criterio": None}
+    if isinstance(resultado.get("resultado"), dict):
+        resultado["resultado"] = historico | resultado["resultado"]
+    datos = resultado.get("datos_raices")
+    if isinstance(datos, dict) and isinstance(datos.get("resultado"), dict):
+        datos["resultado"] = historico | datos["resultado"]
+    return resultado
+
+
 def _raiz(nombre, extra, aproximacion):
-    """Los cuatro métodos de raíces comparten resultado, datos de la gráfica y muestras."""
-    return Adaptador(("resultado", "datos_raices", extra), nombre=nombre,
+    """Los cuatro métodos de raíces comparten resultado, datos de la gráfica y muestras.
+
+    Esquema 2 (#167): criterio de parada absoluto, relativo o porcentual y la entrada original.
+    """
+    return Adaptador(("resultado", "datos_raices", extra), nombre=nombre, esquema=2, anteriores={1: _raices_v1},
                      resumen=_resumen_raiz(aproximacion), grafica=_grafica_raices)
 
 
@@ -181,7 +209,7 @@ ADAPTADORES = {
     "newton-raphson": _raiz("Newton-Raphson", "funcion_natural", "x"),
     "secante": _raiz("Secante", "funcion_natural", "x"),
     "metodos-iterativos": Adaptador(
-        ("iterativos",), principal="iterativos", resumen=lambda c: c["iterativos"]["titulo"]),
+        ("iterativos", "datos_iterativos"), principal="iterativos", resumen=lambda c: c["iterativos"]["titulo"]),
     "relaciones-conjuntos": Adaptador(
         ("resultado", "diagrama", "regiones_aplicadas"), formulario=_conjuntos, por_consulta=True,
         resumen=lambda c: f"{c['resultado']['expresion']} → {c['resultado']['respuesta']}"),

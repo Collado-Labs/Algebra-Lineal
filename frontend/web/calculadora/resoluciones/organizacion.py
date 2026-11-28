@@ -35,7 +35,7 @@ def preparar_resoluciones(filas):
     """Metadatos de cada resolución listos para la plantilla: fecha, herramienta, enlace y estado."""
     from .servicio import url_reabrir
 
-    esquemas = {ruta: adaptador.esquema for ruta, adaptador in registro.ADAPTADORES.items()}
+    adaptadores = registro.ADAPTADORES
     for fila in filas:
         herramienta = catalogo.herramienta_por_id(fila["herramienta"])
         fila["fecha"] = fecha(fila["creado"])
@@ -43,9 +43,9 @@ def preparar_resoluciones(filas):
         fila["chip"] = herramienta.categoria.chip if herramienta else ""
         # El nombre por defecto ya empieza por la herramienta o su método: no se repite encima.
         fila["mostrar_herramienta"] = not fila["nombre"].startswith(fila["herramienta_nombre"])
-        if fila["estado"] == "ok" and fila["ruta"] not in esquemas:
+        if fila["estado"] == "ok" and fila["ruta"] not in adaptadores:
             fila["estado"] = "sin_herramienta"
-        elif fila["estado"] == "ok" and fila["esquema"] != esquemas[fila["ruta"]]:
+        elif fila["estado"] == "ok" and not adaptadores[fila["ruta"]].lee(fila["esquema"]):
             fila["estado"] = "antiguo"
         fila["url"] = url_reabrir(fila["ruta"], fila["id"]) if fila["estado"] in ("ok", "antiguo") else None
     return filas

@@ -306,6 +306,50 @@ class GuardarYReabrirTests(CuadernoTemporal, SimpleTestCase):
             {"nombre": "B", "tipo": "matriz", "valor": [[1, 0], [0, 1]]}])).context_data["resolucion_cuaderno"]
         self.assertEqual(sola["estado"], "guardada")
 
+    def test_expresiones_en_lineas_de_un_campo(self):
+        cliente = Client()
+        url, _ = CASOS["operaciones-matrices"]
+        original = cliente.post(url, datos_expresiones(("A + B\nA +; A + B + C",)))
+        aviso = original.context_data["resolucion_cuaderno"]
+        self.assertEqual((aviso["estado"], aviso["nombre"]), ("guardada", "Operaciones · A + B (+2)"))
+        _, texto = modulo_almacen.almacen().obtener(aviso["id"])
+        documento = contrato.leer(texto)
+        self.assertEqual(documento["entrada"]["expresion"], ["A + B\nA +; A + B + C"])  # la entrada original, intacta
+        filas = contrato.decodificar(documento["resultado"])["resultados"]
+        self.assertEqual([bool(f["error"]) for f in filas], [False, True, False])
+        reabierta = cliente.get(aviso["url"].split("#")[0])
+        self.assertEqual(principal(reabierta.content.decode()), principal(original.content.decode()))
+
+    def test_raices_anteriores_a_los_criterios_relativos_se_leen_como_absolutas(self):
+        """Un documento del esquema 1 (sin «criterio») se muestra como se calculó, sin recalcular."""
+        cliente = Client()
+        url, datos = CASOS["regla-falsa"]
+        aviso = cliente.post(url, datos).context_data["resolucion_cuaderno"]
+        _, texto = modulo_almacen.almacen().obtener(aviso["id"])
+        documento = contrato.leer(texto)
+        resultado = contrato.decodificar(documento["resultado"])
+        for r in (resultado["resultado"], resultado["datos_raices"]["resultado"]):
+            r.pop("criterio"), r.pop("valor_criterio")
+        documento["resultado"], documento["herramienta"]["esquema"] = contrato.codificar(resultado), 1
+        with closing(sqlite3.connect(self.archivo)) as db, db:
+            db.execute("UPDATE resoluciones SET documento = ?", (contrato.serializar(documento),))
+        with patch("frontend.web.calculadora.views_raices.regla_falsa", side_effect=AssertionError("recalculó")):
+            reabierta = cliente.get(aviso["url"].split("#")[0])
+        self.assertEqual(reabierta.context_data["resolucion_cuaderno"]["estado"], "abierta")
+        self.assertEqual(reabierta.context_data["resultado"]["criterio"], "absoluto")
+        self.assertIn(modulo_almacen.almacen().listar()[0]["estado"], ("ok",))
+
+    def test_tolerancia_porcentual_y_absoluta_no_se_confunden(self):
+        cliente = Client()
+        url, datos = CASOS["biseccion"]
+        absoluta = cliente.post(url, datos | {"precision": "0.0001", "criterio": "absoluto"}).context_data
+        porcentual = cliente.post(url, datos | {"precision": "0.01%", "criterio": "porcentual"}).context_data
+        self.assertNotEqual(absoluta["resolucion_cuaderno"]["id"], porcentual["resolucion_cuaderno"]["id"])
+        for contexto, criterio in ((absoluta, "absoluto"), (porcentual, "porcentual")):
+            reabierta = cliente.get(contexto["resolucion_cuaderno"]["url"].split("#")[0]).context_data
+            self.assertEqual(reabierta["resultado"]["criterio"], criterio)
+            self.assertEqual(reabierta["datos_raices"]["tolerancia_original"], contexto["datos_raices"]["tolerancia_original"])
+
     def test_entrada_invalida_no_se_guarda(self):
         respuesta = Client().post("/romanos/conversion/", {"direccion": "decimal_a_romano", "numero": "abc"})
         self.assertIsNone(respuesta.context_data["resolucion_cuaderno"])
