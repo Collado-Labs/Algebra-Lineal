@@ -15,6 +15,7 @@ FUNCIONES = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": math.exp,
 CONSTANTES = {"pi": math.pi, "e": math.e}
 OPERACIONES = {ast.Add: operator.add, ast.Sub: operator.sub,
                ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Pow: math.pow}
+SIGNOS_MATEMATICOS = str.maketrans("−–×·⋅÷∕⁄", "--***///")
 SUPERINDICES = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-")
 
 
@@ -26,6 +27,8 @@ def normalizar_potencias(texto):
         signo = exponente[0] if exponente[0] in "+-" else ""
         exponente = signo + (exponente.lstrip("+-").lstrip("0") or "0")
         return f"**({exponente})"
+    texto = re.sub(r"(?<=[ex0-9)])(⁻?ˣ)(?![⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ˣ])",
+                   lambda m: "^(-x)" if m[0] == "⁻ˣ" else "^(x)", texto)
     return re.sub(r"[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+", entero, texto.replace("^", "**"))
 
 
@@ -159,9 +162,24 @@ class FuncionReal:
     def __init__(self, texto):
         if not isinstance(texto, str) or not texto.strip() or len(texto) > 512:
             raise ValueError("Escribe una función de x de hasta 512 caracteres.")
+        self.original = texto
         self.texto = texto.strip()
+        miembros = self.texto.translate(SIGNOS_MATEMATICOS).split("=")
+        if len(miembros) > 2 or any(not miembro.strip() for miembro in miembros):
+            raise ValueError("Escribe una función o una igualdad con un único = y ambos miembros completos.")
         try:
-            self.expresion = explicitar_productos(normalizar_potencias(self.texto).replace("√", " sqrt").replace("π", " pi ").strip())
+            normalizados = []
+            for miembro in miembros:
+                miembro = miembro.replace("π", " pi ").replace("log₁₀", "log10")
+                miembro = miembro.replace("√", " sqrt")
+                normal = explicitar_productos(normalizar_potencias(miembro.strip())).strip()
+                # Validar cada miembro antes de añadir los paréntesis de la resta.
+                if len(miembros) == 2:
+                    ast.parse(normal, mode="eval")
+                normalizados.append(normal)
+            self.miembros = tuple(normalizados)
+            self.expresion = (normalizados[0] if len(normalizados) == 1 else
+                              f"({normalizados[0]}) - ({normalizados[1]})")
             self.arbol = ast.parse(self.expresion, mode="eval").body
             if len(list(ast.walk(self.arbol))) > 160:
                 raise ValueError("La función tiene demasiadas operaciones.")
@@ -188,7 +206,7 @@ class FuncionReal:
               and nodo.func.id in FUNCIONES and len(nodo.args) == 1 and not nodo.keywords):
             self._validar(nodo.args[0], nivel + 1)
         else:
-            raise ValueError("Sintaxis no admitida. Usa solo x, números y funciones matemáticas permitidas.")
+            raise ValueError("Sintaxis no admitida. Usa x, números y funciones con paréntesis: sen(x), ln(x), √(x).")
 
     def _numero(self, nodo, x):
         if isinstance(nodo, ast.Constant):
