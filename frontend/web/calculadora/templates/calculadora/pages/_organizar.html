@@ -1,0 +1,38 @@
+{% comment %}
+    Organizar ejercicios por lotes: números y rangos («3-22, 35, 40-44») y/o las casillas de las
+    filas (Mayús + clic marca un tramo), una acción y su destino. Sin JavaScript, Aplicar muestra
+    primero qué ejercicios y cuántos; con él, la vista previa aparece mientras se escribe.
+{% endcomment %}
+<form id="lote" class="proyecto-organizar" method="post" action="{{ pagina }}" data-lote data-seleccion-url="{% url 'calculadora:proyecto-seleccion' proyecto.id %}" aria-labelledby="organizar-titulo">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="lote"><input type="hidden" name="proyecto" value="{{ proyecto.id }}">
+    <input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="confirmado" value="" data-confirmado>
+    <h2 class="proyecto-organizar-titulo" id="organizar-titulo">Organizar</h2>
+    <label class="cuaderno-filtro proyecto-organizar-numeros"><span>Ejercicios</span>
+        <input class="field-input" name="numeros" value="{{ lote.texto }}" maxlength="500" placeholder="3-22, 35, 40-44" autocomplete="off" spellcheck="false" aria-describedby="organizar-vista">
+    </label>
+    <label class="cuaderno-filtro"><span>Acción</span>
+        <select class="field-select" name="operacion" data-operacion>
+            {% for clave, rotulo in operaciones.items %}<option value="{{ clave }}"{% if lote.operacion == clave %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+    </label>
+    <label class="cuaderno-filtro" data-para="seccion"><span>Sección</span>
+        <select class="field-select" name="destino_seccion" data-con-nueva>
+            <option value="">Sin sección</option>
+            {% for s in secciones %}<option value="{{ s.id }}"{% if lote.destino == s.id|stringformat:"s" %} selected{% endif %}>{{ s.titulo }}</option>{% endfor %}
+            <option value="nueva"{% if lote.destino == "nueva" %} selected{% endif %}>Sección nueva…</option>
+        </select>
+    </label>
+    <label class="cuaderno-filtro" data-para="seccion" data-solo-nueva><span>Título de la sección nueva</span>
+        <input class="field-input" name="nueva_seccion" value="{{ lote.nueva_seccion }}" maxlength="{{ max_nombre }}" placeholder="Práctica 3 · Determinantes">
+    </label>
+    {% if otros_proyectos %}
+        <label class="cuaderno-filtro" data-para="proyecto"><span>Proyecto</span>
+            <select class="field-select" name="destino_proyecto">
+                {% for p in otros_proyectos %}<option value="{{ p.id }}"{% if lote.destino == p.id|stringformat:"s" %} selected{% endif %}>{{ p.nombre }}</option>{% endfor %}
+            </select>
+        </label>
+    {% endif %}
+    <button class="btn btn-primary" type="submit" data-aplicar>Aplicar</button>
+    <p class="proyecto-organizar-vista" id="organizar-vista" aria-live="polite" data-lote-vista>Escribe números o rangos, o marca ejercicios en la lista (Mayús + clic marca un tramo).</p>
+</form>

@@ -3,7 +3,7 @@
     Cuaderno de resoluciones. Arriba, los proyectos (trabajos que se construyen poco a poco);
     después, los ejercicios independientes como hojas con sus pasos numerados y las resoluciones
     sueltas por día. Con filtros, una sola lista de coincidencias con su ubicación. Una sola
-    selección (casillas del formulario #cuaderno-seleccion) para llevar, sacar o eliminar;
+    selección (casillas del formulario #cuaderno-seleccion) para añadir a un ejercicio o eliminar;
     renombrar usa formularios propios (atributo form) para que Enter nunca dispare otra acción.
     Todo funciona sin JavaScript; resoluciones.js añade el recuento y la barra flotante.
 {% endcomment %}
@@ -54,8 +54,8 @@
                     <form class="cuaderno-nuevo-form" method="post" action="{% url 'calculadora:resoluciones' %}">
                         {% csrf_token %}
                         <input type="hidden" name="accion" value="crear_proyecto">
-                        <label class="cuaderno-filtro cuaderno-filtro-ancho"><span>Nombre</span><input class="field-input" name="nombre" maxlength="{{ max_nombre }}" required placeholder="Banco de Álgebra Lineal"></label>
-                        <label class="cuaderno-filtro"><span>Ejercicios previstos (opcional)</span><input class="field-input" type="number" name="objetivo" min="1" max="999" inputmode="numeric" placeholder="64"></label>
+                        <label class="cuaderno-filtro cuaderno-filtro-ancho"><span>Nombre</span><input class="field-input" name="nombre" maxlength="{{ max_nombre }}" required placeholder="Práctica 3 · Matrices"></label>
+                        <label class="cuaderno-filtro"><span>Ejercicios previstos (opcional)</span><input class="field-input" type="number" name="objetivo" min="1" max="999" inputmode="numeric" placeholder="20"></label>
                         <button class="btn btn-primary" type="submit">Crear y trabajar en él</button>
                     </form>
                 </details>
@@ -74,7 +74,7 @@
                     {% endfor %}
                 </ul>
             {% else %}
-                <p class="field-help cuaderno-pista">Un proyecto reúne los ejercicios de un trabajo —por ejemplo, un banco de 64 ejercicios— y es el borrador del documento que podrás exportar. Mientras está activo, cada resolución se añade con un clic a su ejercicio.</p>
+                <p class="field-help cuaderno-pista">Un proyecto reúne los ejercicios de un trabajo —una práctica, una guía o una tarea de clase— y es el borrador del documento que podrás exportar. Mientras trabajas en él, cada resolución se añade con un clic a su ejercicio.</p>
             {% endif %}
         </section>
     {% endif %}
@@ -126,7 +126,7 @@
                                         {% for r in e.pasos %}{% include "calculadora/pages/_resolucion.html" with nivel=4 %}{% endfor %}
                                     </ol>
                                 {% else %}
-                                    <p class="hoja-vacia">Este ejercicio todavía no tiene resoluciones. Marca alguna y llévala a «{{ e.etiqueta }}».</p>
+                                    <p class="hoja-vacia">Este ejercicio todavía no tiene resoluciones. Marca alguna y añádela a «{{ e.etiqueta }}».</p>
                                 {% endif %}
                             </section>
                         {% endfor %}
@@ -136,7 +136,7 @@
                 {% if sueltas %}
                     <section class="cuaderno-seccion" aria-labelledby="sueltas-titulo">
                         <h2 id="sueltas-titulo" class="cuaderno-seccion-titulo">Sueltas</h2>
-                        {% if not ejercicios and not proyectos %}<p class="field-help">Cuando varias resoluciones formen parte de un mismo ejercicio —un determinante, la inversa y su comprobación—, márcalas y llévalas a un ejercicio.</p>{% endif %}
+                        {% if not ejercicios and not proyectos %}<p class="field-help">Cuando varias resoluciones formen parte de un mismo ejercicio —un determinante, la inversa y su comprobación—, márcalas y añádelas a un ejercicio.</p>{% endif %}
                         {% for dia in sueltas %}
                             <section class="hoja hoja-dia" aria-labelledby="dia-{{ forloop.counter }}" data-grupo>
                                 <header class="hoja-cabecera">
