@@ -225,6 +225,7 @@
         function insertar(campo, texto, retroceso = 0) {
             const inicio = campo.selectionStart ?? campo.value.length;
             const fin = campo.selectionEnd ?? inicio;
+            if (campo.maxLength >= 0 && campo.value.length - (fin - inicio) + texto.length > campo.maxLength) return;
             if (document.activeElement !== campo) campo.focus({ preventScroll: true });
 
             // Delimitar la edición del dock frente a la escritura física, sin cambiar foco.
@@ -261,6 +262,16 @@
         });
         contenedor.addEventListener("compositionstart", () => activarSuperindice(false));
 
+        contenedor.addEventListener("paste", evento => {
+            const campo = evento.target;
+            if (!campo.closest('[data-perfil="funcion-real"]') || campo.name !== "funcion") return;
+            const texto = window.linealizarPegadoMatematico?.(evento.clipboardData?.getData("text/html"));
+            if (!texto) return;
+            evento.preventDefault();
+            activarSuperindice(false);
+            insertar(campo, texto);
+        });
+
         teclado.addEventListener("click", event => {
             const tecla = event.target.closest("button[data-insercion]");
             if (!tecla || !teclado.contains(tecla)) return;
@@ -270,7 +281,17 @@
                 activarSuperindice(!superindice);
                 return;
             }
-            insertar(objetivo, textoDeEntrada(tecla.dataset.insercion, objetivo), Number(tecla.dataset.retroceso) || 0);
+            const { insercion, retroceso } = tecla.dataset;
+            const seleccion = objetivo.value.slice(objetivo.selectionStart, objetivo.selectionEnd);
+            if (perfilActual === "funcion-real" && seleccion && insercion === "()/()") {
+                activarSuperindice(false);
+                insertar(objetivo, "(" + seleccion + ")/()", 1);
+            } else if (perfilActual === "funcion-real" && seleccion && Number(retroceso) === 1 && insercion.endsWith("()")) {
+                activarSuperindice(false);
+                insertar(objetivo, insercion.slice(0, -1) + seleccion + ")");
+            } else {
+                insertar(objetivo, textoDeEntrada(insercion, objetivo), Number(retroceso) || 0);
+            }
         });
 
         // Cambios de perfil, visibilidad o estructura invalidan objetivos antiguos.

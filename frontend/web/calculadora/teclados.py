@@ -109,15 +109,23 @@ PERFIL_FUNCION_REAL = Perfil("funcion-real", (
     GrupoTeclas("Variable y potencias", (
         Tecla("x", "x", "Variable x"), Tecla("x²", "x²", "x al cuadrado"),
         Tecla("x³", "x³", "x al cubo"), Tecla("aⁿ", "¹", "Activar o desactivar superíndices", exponente_entero=True),
+        Tecla("x^(□)", "^()", "Exponente compuesto", 1),
     )),
     GrupoTeclas("Operaciones", (Tecla("( )", "()", "Paréntesis", 1), MAS, MENOS,
-                                Tecla("×", "*", "Multiplicar"), FRACCION)),
+                                Tecla("×", "*", "Multiplicar"), FRACCION, IGUAL,
+                                Tecla("(a)⁄(b)", "()/()", "Fracción con numerador y denominador", 4))),
     GrupoTeclas("Funciones", (
         Tecla("sen", "sen()", "Seno en radianes", 1), Tecla("cos", "cos()", "Coseno en radianes", 1),
         Tecla("√", "√()", "Raíz cuadrada", 1), Tecla("ln", "ln()", "Logaritmo natural, base e", 1),
-        Tecla("log₁₀", "log10()", "Logaritmo decimal, base diez", 1),
+        Tecla("log₁₀", "log10()", "Logaritmo decimal, base diez", 1), Tecla("tan", "tan()", "Tangente en radianes", 1),
     )),
     GrupoTeclas("Constantes", (Tecla("π", "π", "Pi"), Tecla("e", "e", "Número de Euler, base del logaritmo natural"))),
+    grupo_digitos(10),
+))
+PERFIL_TOLERANCIA = Perfil("tolerancia", (
+    GrupoTeclas("Tolerancia", (Tecla("%", "%", "Porcentaje"), Tecla(".", ".", "Punto decimal"),
+                              Tecla(",", ",", "Coma decimal"), MENOS,
+                              Tecla("10ⁿ", "10^()", "Potencia de diez", 1))),
     grupo_digitos(10),
 ))
 LITERALES_CONJUNTOS = GrupoTeclas("Elementos", (
@@ -164,7 +172,7 @@ PERFILES_BASE = {
 }
 
 PERFILES = {perfil.id: perfil for perfil in (
-    PERFIL_SISTEMA, PERFIL_NUMERICO, PERFIL_EXPRESION, PERFIL_LINEAL, PERFIL_FUNCION_REAL,
+    PERFIL_SISTEMA, PERFIL_NUMERICO, PERFIL_EXPRESION, PERFIL_LINEAL, PERFIL_FUNCION_REAL, PERFIL_TOLERANCIA,
     PERFIL_LITERAL_CONJUNTOS, PERFIL_RELACION_CONJUNTOS, PERFIL_REGIONES_CONJUNTOS, *PERFILES_BASE.values(),
 )}
 

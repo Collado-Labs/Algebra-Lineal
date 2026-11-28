@@ -20,6 +20,8 @@
     const seleccion = $("grafica-seleccion");
     const ayudaGrafica = $("grafica-ayuda");
     const derivada = $("raices-derivada");
+    const vistaMatematica = $("raices-vista-matematica");
+    const avisoNotacion = $("raices-aviso-notacion");
     const slider = $("iteracion-raices");
     const contador = $("iteracion-contador");
     const anterior = $("iteracion-anterior");
@@ -203,6 +205,16 @@
         else if (rf.bottom > rm.bottom) marcoTabla.scrollTop += rf.bottom - rm.bottom;
     }
 
+    function medir(valor, criterio = resultado?.criterio) {
+        if (!Number.isFinite(valor)) return "no evaluable";
+        const escala = criterio === "porcentual" ? valor * 100 : valor;
+        if (!Number.isFinite(escala)) {
+            const [mantisa, exponente] = valor.toExponential(6).split("e");
+            return mantisa + "e+" + (Number(exponente) + 2) + "%";
+        }
+        return formato([escala]).n(escala) + (criterio === "porcentual" ? "%" : "");
+    }
+
     function mostrarPaso(i, { enfocarFila = false } = {}) {
         if (!pasos.length) return;
         i = Math.min(Math.max(i, primero), pasos.length);
@@ -212,7 +224,7 @@
         contador.textContent = `${i} / ${pasos.length}`;
         anterior.disabled = i === primero;
         siguiente.disabled = i === pasos.length;
-        const ayudas = { formato, signo }, contexto = { ultimo: i === pasos.length, resultado };
+        const ayudas = { formato, signo, medir, nombreCriterio: datos.criterio_nombre }, contexto = { ultimo: i === pasos.length, resultado };
         const paso = p ? metodo.paso(p, ayudas, contexto) : metodo.pasoInicial(resultado, ayudas, contexto);
         const titulo = paso.titulo || `Iteración ${i} de ${pasos.length}`;
         slider.setAttribute("aria-valuetext", `${titulo}, ${paso.aria}`);
@@ -327,6 +339,7 @@
             const puntos = await response.json();
             if (n !== generacion) return;
             if (!response.ok) throw new Error(puntos.error);
+            mostrarNotacion(puntos);
             if ("derivada" in puntos) mostrarDerivada(puntos.derivada);
             grafica.hidden = false;
             ayudaGrafica.hidden = false;
@@ -358,6 +371,7 @@
                 ayudaGrafica.hidden = true;
                 seleccion.hidden = true;
                 estado.textContent = error.message || "No se pudo actualizar la gráfica.";
+                mostrarNotacion();
                 mostrarDerivada(undefined);
             }
         }
@@ -377,6 +391,15 @@
             : "f′(x) aparecerá cuando f(x) esté completa.";
     }
 
+    function mostrarNotacion({ mathml, aviso_notacion: aviso = "" } = {}) {
+        const math = mathml && new DOMParser().parseFromString(mathml, "application/xml").documentElement;
+        const valida = math?.namespaceURI === "http://www.w3.org/1998/Math/MathML";
+        vistaMatematica.replaceChildren(...(valida ? [document.importNode(math, true)] : []));
+        vistaMatematica.hidden = !valida;
+        avisoNotacion.textContent = aviso;
+        avisoNotacion.hidden = !aviso;
+    }
+
     function previsualizar() {
         clearTimeout(temporizador);
         // Invalidar también durante la espera evita pintar una respuesta de la entrada anterior.
@@ -388,6 +411,7 @@
             ayudaGrafica.hidden = true;
             seleccion.hidden = true;
             estado.textContent = indicacion;
+            mostrarNotacion();
             mostrarDerivada(undefined, true);
             return;
         }
@@ -481,7 +505,7 @@
 
     // ---- Historial de la sesión: un método por clave y agrupado por función equivalente. ----
     // Cada método nombra su comprobación: longitud del intervalo (Bisección) o error absoluto.
-    const MOTIVOS = { limite: "máximo de iteraciones", estancamiento: "estancamiento", maquina: "límite de máquina",
+    const MOTIVOS = { criterio_indefinido: "criterio indefinido", limite: "máximo de iteraciones", estancamiento: "estancamiento", maquina: "límite de máquina",
         oscilacion: "ciclo", divergencia: "salto no finito", dominio: "fuera del dominio", derivada: "derivada nula",
         dominio_derivada: "derivada no definida", evaluacion: "evaluación no válida", derivacion: "sin derivada" };
     function criterio(r) {
@@ -498,11 +522,13 @@
         const parametros = intervalo ? { a: datos.inicial_a, b: datos.inicial_b }
             : Object.fromEntries(extremos.map(nombre => [nombre, resultado[nombre]]));
         const ajustes = { precision: resultado.precision ?? resultado.tolerancia, max_iteraciones: resultado.max_iteraciones };
+        if (resultado.criterio && resultado.criterio !== "absoluto") ajustes.criterio = resultado.criterio;
         const actualRegistro = { id: JSON.stringify([datos.clave, parametros, ajustes]), clave: datos.clave,
             funcion: datos.funcion, parametros, ajustes, clasificacion: resultado.clasificacion,
             estado: resultado.estado, convergio: resultado.convergio, x: resumen?.x ?? null,
             iteraciones: pasos.length, residuo: resultado.residuo,
-            metrica: resumen ? metodo.historial.valor(resultado) ?? null : null };
+            toleranciaOriginal: datos.tolerancia_original,
+            metrica: resumen ? (ajustes.criterio ? resultado.valor_criterio : metodo.historial.valor(resultado)) ?? null : null };
         let registros = [];
         try {
             const guardados = JSON.parse(sessionStorage.getItem(clave) || "[]");
@@ -528,7 +554,7 @@
         };
         // Primero lo que se compara (aproximación, iteraciones y criterio); después, las medidas que lo justifican.
         const columnas = [intervalo ? "Intervalo inicial" : extremos.map(rotulo).join(", "), "Aproximación", "Iteraciones",
-            "Criterio de parada", metodo.historial.metrica, "Residuo", metodo.historial.tolerancia, ""];
+            "Criterio de parada", registros.some(r => r.ajustes.criterio) ? "Medida del criterio" : metodo.historial.metrica, "Residuo", metodo.historial.tolerancia, ""];
         const tabla = document.createElement("table");
         tabla.className = "procedure-table raices-historial-tabla";
         const leyenda = tabla.createCaption();
@@ -559,9 +585,11 @@
                 estadoCelda.className = "raices-criterio";
                 estadoCelda.dataset.tono = tono;
                 estadoCelda.textContent = texto;
-                fila.insertCell().append(valor(r.metrica, "error"));
+                const seleccionado = r.ajustes.criterio;
+                if (seleccionado) estadoCelda.append(" · " + (seleccionado === "porcentual" ? "Porcentual" : "Relativo"));
+                fila.insertCell().append(seleccionado === "porcentual" ? medir(r.metrica, seleccionado) : valor(r.metrica, "error"));
                 fila.insertCell().append(valor(r.residuo, "f"));
-                fila.insertCell().append(valor(r.ajustes.precision, "tolerancia"));
+                fila.insertCell().append(seleccionado === "porcentual" ? medir(r.ajustes.precision, seleccionado) : valor(r.ajustes.precision, "tolerancia"));
                 const accion = fila.insertCell();
                 if (r.id === actualRegistro.id) {
                     fila.setAttribute("aria-current", "true");
@@ -576,7 +604,9 @@
                     : extremos.map(nombre => `${rotulo(nombre)} = ${plano(p[nombre])}`).join(", ")}`);
                 ver.addEventListener("click", () => {
                     pausar();
-                    for (const [nombre, dato] of Object.entries({ funcion: r.funcion, ...p, ...r.ajustes })) {
+                    const precision = r.toleranciaOriginal ?? r.ajustes.precision;
+                    for (const [nombre, dato] of Object.entries({ funcion: r.funcion, ...p, ...r.ajustes,
+                        criterio: seleccionado || "absoluto", precision })) {
                         if (campo(nombre)) campo(nombre).value = typeof dato === "number" ? plano(dato) : dato;
                     }
                     form.requestSubmit();
@@ -585,7 +615,7 @@
             }
         }
         seccion.querySelector(".field-help").textContent =
-            `Agrupadas por función. ${metodo.historial.criterio} «Ver» recupera una ejecución con su recorrido.`;
+            `Agrupadas por función. ${registros.some(r => r.ajustes.criterio) ? "Cada ejecución muestra su criterio y umbral." : metodo.historial.criterio} «Ver» recupera una ejecución con su recorrido.`;
         $("raices-historial-tabla").replaceChildren(tabla);
         seccion.querySelector(".disclosure-title").textContent = `Historial de esta sesión (${registros.length})`;
         seccion.hidden = false;

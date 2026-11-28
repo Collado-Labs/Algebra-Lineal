@@ -68,7 +68,7 @@ class PruebasHerramientaUnica(SimpleTestCase):
                 selector = html[html.index('aria-label="Método cerrado"'):html.index("</nav>", html.index('aria-label="Método cerrado"'))]
                 self.assertEqual(selector.count('aria-current="page"'), 1)
                 self.assertRegex(selector, rf'aria-current="page">{actual} <small>')
-                self.assertEqual(selector.count('data-conservar="funcion a b precision max_iteraciones"'), 2)
+                self.assertEqual(selector.count('data-conservar="funcion a b precision max_iteraciones criterio"'), 2)
         script = (STATIC / "raices.js").read_text(encoding="utf-8")
         self.assertIn('document.querySelectorAll("[data-conservar]")', script)
 
@@ -121,7 +121,7 @@ class PruebasResultadoPrimero(SimpleTestCase):
         self.assertIn("Criterio de parada b − a < precisión", lectura)
         self.assertIn("· cumplido", lectura)
         self.assertIn("|c − raíz| ≤", lectura)
-        self.assertNotIn("%", lectura[:lectura.index("Gráfica de la función")])
+        self.assertNotIn("%", lectura[lectura.index("Raíz aproximada"):lectura.index("Gráfica de la función")])
         # El resumen va antes de la gráfica; la explicación extensa, en un solo desplegable.
         html = r.content.decode("utf-8")
         self.assertLess(html.index('class="raices-ficha"'), html.index('id="raices-grafica"'))

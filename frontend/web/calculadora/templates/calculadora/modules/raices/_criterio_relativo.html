@@ -1,0 +1,8 @@
+{% load raices %}
+<div data-cumple="{{ resultado.convergio|yesno:'true,false' }}">
+    <dt>{{ datos_raices.criterio_nombre }}</dt>
+    <dd>{{ resultado.valor_criterio|valor_criterio:resultado.criterio }} · umbral {{ umbral|valor_criterio:resultado.criterio }}{% if resultado.estado == "exacta" %} · cero calculado{% endif %}</dd>
+</div>
+{% if resultado.tolerancia_residuo is not None %}
+<div><dt>Umbral del residuo absoluto</dt><dd>{{ resultado.tolerancia_residuo|numero_raices:"f" }}</dd></div>
+{% endif %}

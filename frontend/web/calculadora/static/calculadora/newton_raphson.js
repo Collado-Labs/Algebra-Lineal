@@ -31,15 +31,24 @@ const { subindice: subindiceNewton, nodo: nodoNewton, menos: menosNewton, fracci
             puntos: { x: [x0], y: [f0], text: ["(x₀, f(x₀))"], size: [11], symbol: ["circle"] },
         };
     },
-    paso(p, { formato }, { ultimo, resultado }) {
+    paso(p, { formato, medir, nombreCriterio }, { ultimo, resultado }) {
         const tolerancia = resultado.tolerancia;
+        const relativo = resultado.criterio && resultado.criterio !== "absoluto";
+        const umbralResiduo = resultado.tolerancia_residuo ?? tolerancia;
         const lectura = formato([p.xn, p.siguiente, p.fxn, p.dfxn, p.residuo, p.error_absoluto, tolerancia]);
         const { n, r } = lectura, v = x => menosNewton(n(x));
         const k = subindiceNewton(p.i - 1), m = subindiceNewton(p.i);
+        const medidas = [
+            relativo ? [nombreCriterio, p.valor_criterio, tolerancia, medir]
+                : ["Error absoluto |x" + m + " − x" + k + "|", p.error_absoluto],
+            ["Residuo |f(x" + m + ")|", p.residuo, umbralResiduo],
+        ];
+        const detalleRelativo = [nombreCriterio + " " + medir(p.valor_criterio) + " · umbral " + medir(tolerancia),
+            "Residuo absoluto " + r(p.residuo) + " · umbral " + n(umbralResiduo)];
         // «=» solo si las tres cifras sustituidas son exactamente las almacenadas.
         const exacta = [p.xn, p.fxn, p.dfxn].every(x => Number(n(x)) === x);
         const comprobacion = window.metodosAbiertos.comprobacion(
-            [[`Error absoluto |x${m} − x${k}|`, p.error_absoluto], [`Residuo |f(x${m})|`, p.residuo]], tolerancia, lectura);
+            medidas, tolerancia, lectura);
         return {
             titulo: `Iteración ${p.i} de ${resultado.iteraciones.length}: x${m}`,
             aria: `x${k} ${n(p.xn)}, x${m} ${n(p.siguiente)}`,
@@ -49,14 +58,14 @@ const { subindice: subindiceNewton, nodo: nodoNewton, menos: menosNewton, fracci
                     window.metodosAbiertos.linea(`x${m} = x${k} − `, ...fraccionNewton(`f(x${k})`, `f′(x${k})`)),
                     window.metodosAbiertos.linea(`x${m} ${exacta ? "=" : "≈"} ${v(p.xn)} − `, ...fraccionNewton(v(p.fxn), v(p.dfxn)))),
                 bloqueNewton("Nueva aproximación", window.metodosAbiertos.nueva(`x${m}`, p.siguiente, lectura)),
-                bloqueNewton(`Comprobación con tolerancia ${n(tolerancia)}`, comprobacion),
+                bloqueNewton(relativo ? "Comprobación del cambio y el residuo" : "Comprobación con tolerancia " + n(tolerancia), comprobacion),
                 ultimo ? `Se detiene: ${resultado.mensaje}`
                     : `Continúa: las dos medidas deben cumplir la tolerancia. La siguiente tangente parte de x${m}.`,
             ],
             valores: [`x${k} ${r(p.xn)}`, `f(x${k}) ${r(p.fxn)}`, `f′(x${k}) ${r(p.dfxn)}`],
             decision: [`x${m} = ${v(p.xn)} − (${v(p.fxn)})/(${v(p.dfxn)}) ${r(p.siguiente)}`,
                 "El corte de la tangente con el eje x es la siguiente aproximación."],
-            error: [`Error absoluto |x${m} − x${k}| ${r(p.error_absoluto)}`, `Residuo |f(x${m})| ${r(p.residuo)}`,
+            error: relativo ? detalleRelativo : [`Error absoluto |x${m} − x${k}| ${r(p.error_absoluto)}`, `Residuo |f(x${m})| ${r(p.residuo)}`,
                 `Tolerancia ${n(tolerancia)}: deben cumplirla ambos.`],
             parada: [ultimo ? resultado.mensaje : "Continúa: todavía no se cumplen las dos condiciones de parada."],
             puntos: { x: [p.xn, p.siguiente], y: [p.fxn, p.fsiguiente],

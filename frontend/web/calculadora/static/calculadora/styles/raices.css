@@ -208,3 +208,14 @@
     [data-estilo] .raices-tabla-marco { max-height: 15rem; }
     .raices-verificaciones dl { grid-template-columns: 1fr; }
 }
+
+.raices-vista-matematica {
+    overflow-x: auto;
+    padding-block: .25rem;
+}
+.raices-funcion .raices-vista-matematica {
+    margin-block-start: var(--space-2);
+}
+.raices-vista-matematica math {
+    font-size: 1.15rem;
+}
