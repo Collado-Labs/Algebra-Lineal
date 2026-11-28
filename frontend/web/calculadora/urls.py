@@ -8,7 +8,7 @@ from .views_raices import (cerrados_ruta_antigua, explorar_funcion, newton_raphs
 from .views_conjuntos import relaciones_conjuntos, cardinalidades_conjuntos
 from .views_independencia import independencia_lineal
 from .views_iterativos import metodos_iterativos
-from .views_resoluciones import proyecto, resoluciones
+from .views_resoluciones import proyecto, resoluciones, seleccion
 
 
 app_name = "calculadora"
@@ -57,6 +57,7 @@ urlpatterns = [
     # Cuaderno de resoluciones: cada resultado válido se guarda solo y se reabre desde aquí.
     path("resoluciones/", resoluciones, name="resoluciones"),
     path("resoluciones/proyectos/<int:identificador>/", proyecto, name="proyecto"),
+    path("resoluciones/proyectos/<int:identificador>/seleccion/", seleccion, name="proyecto-seleccion"),
     # Solo la app de escritorio: tema y formato numérico entre aperturas (404 en la web).
     path("preferencias/", views.guardar_preferencia, name="preferencias"),
     # Solo la app de escritorio: buscar, descargar e instalar actualizaciones (404 en la web).

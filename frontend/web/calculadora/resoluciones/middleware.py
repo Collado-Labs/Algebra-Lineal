@@ -26,6 +26,7 @@ class ResolucionesMiddleware:
         adaptador = registro.adaptador(request.resolver_match)
         if adaptador and request.method == "GET" and "resolucion" in request.GET:
             request.resolucion = abierta = servicio.abrir(request.GET["resolucion"], request.resolver_match)
+            abierta["tras"], abierta["en"] = request.GET.get("tras"), request.GET.get("en")
             if adaptador.por_consulta and abierta.get("datos") is not None:
                 # La vista rellena su editor desde la consulta, como al volver de otra página.
                 consulta = request.GET.copy()

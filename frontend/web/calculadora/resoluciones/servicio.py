@@ -6,7 +6,6 @@ no calculan nada. Un fallo del cuaderno nunca impide mostrar el resultado.
 
 import logging
 import re
-from datetime import datetime
 
 from django.http import QueryDict
 from django.urls import NoReverseMatch, reverse
@@ -57,7 +56,7 @@ def nombre_por_defecto(herramienta, entrada):
 
 
 def _aviso(identificador, estado, **extra):
-    """Lo que necesita el aviso de la página: la ficha, dónde está y a qué ejercicios llevarla."""
+    """Lo que necesita el aviso de la página: la ficha, dónde se usa y a qué ejercicios añadirla."""
     from . import organizacion
 
     datos = {"estado": estado, "id": identificador, **extra}
@@ -65,18 +64,17 @@ def _aviso(identificador, estado, **extra):
         cuaderno = almacen()
         ficha = cuaderno.obtener(identificador, documento=False) if identificador else None
         ejercicios, proyectos = cuaderno.ejercicios(), cuaderno.proyectos()
+        referencias = cuaderno.referencias(resoluciones=[identificador]) if ficha else []
+        _, activo = cuaderno.activo()
     except AlmacenNoDisponible:
         return datos
     if ficha:
-        try:
-            fecha = datetime.fromisoformat(ficha["creado"])
-        except ValueError:
-            fecha = None
-        ejercicio = next((e for e in ejercicios if e["id"] == ficha["ejercicio"]), None)
-        if ejercicio:
-            ejercicio = ejercicio | {"etiqueta": organizacion.etiqueta(ejercicio), "proyecto_nombre": next(
-                (p["nombre"] for p in proyectos if p["id"] == ejercicio["proyecto"]), None)}
-        datos.update(nombre=ficha["nombre"], creado=ficha["creado"], fecha=fecha, ejercicio=ejercicio)
+        nombres = {p["id"]: p["nombre"] for p in proyectos}
+        lugares = [e for e in ejercicios if e["id"] in {r["ejercicio"] for r in referencias}]
+        datos.update(nombre=ficha["nombre"], creado=ficha["creado"], fecha=organizacion.fecha(ficha["creado"]),
+                     ubicaciones=[e | {"corta": organizacion.corta(e), "etiqueta": organizacion.etiqueta(e),
+                                       "proyecto_nombre": nombres.get(e["proyecto"])} for e in lugares],
+                     en_activo=any(e["id"] == activo for e in lugares))
     datos["destinos"] = organizacion.destinos(ejercicios, proyectos)
     return datos
 
@@ -158,5 +156,10 @@ def reabrir(abierta, adaptador, contexto):
         contexto.update(abierta["resultado"])
     if "ficha" not in abierta:
         return {"estado": abierta["estado"], "motivo": abierta.get("motivo")}
-    return _aviso(abierta["id"], abierta["estado"], url=abierta.get("url"), motivo=abierta.get("motivo"))
+    # Recién añadida desde el aviso de un cálculo: no es una consulta histórica («Desde tu cuaderno»).
+    estado = "anadida" if abierta["estado"] == "abierta" and abierta.get("tras") == "anadida" else abierta["estado"]
+    aviso = _aviso(abierta["id"], estado, url=abierta.get("url"), motivo=abierta.get("motivo"))
+    if estado == "anadida":
+        aviso["anadida_a"] = next((u for u in aviso.get("ubicaciones", ()) if str(u["id"]) == abierta.get("en")), None)
+    return aviso
 

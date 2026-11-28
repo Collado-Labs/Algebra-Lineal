@@ -12,10 +12,13 @@ Errores, de menor a mayor gravedad:
 - Archivo dañado (SQLite informa SQLITE_CORRUPT o SQLITE_NOTADB, o ``quick_check`` falla):
   se aparta con otro nombre, nunca se borra, y se empieza un archivo nuevo.
 
-Organización (versión 2 de la base): Proyecto → Sección (opcional) → Ejercicio → Resoluciones.
-Los ejercicios y las resoluciones pueden quedar fuera de todo proyecto. Cada elemento tiene su
-``posicion`` dentro de su contenedor e ``incluir`` para el borrador del documento: excluir algo de
-la exportación nunca lo borra. Quitar un proyecto, una sección o un ejercicio deja sus contenidos.
+Organización (versión 3 de la base): Proyecto → Sección (opcional) → Ejercicio → Referencias.
+Una resolución es el documento histórico (inmutable salvo su nombre); una referencia la coloca en
+un ejercicio con su propia posición e inclusión en el documento, así que una misma resolución
+puede servir en varios ejercicios o proyectos sin copiarse. Sin referencias, queda «suelta».
+Excluir algo del documento nunca lo borra. Quitar un proyecto, una sección o un ejercicio deja las
+resoluciones en el cuaderno. Los proyectos abiertos y el ejercicio activo de cada uno viven en
+``proyectos``; el destino de los nuevos cálculos, en ``ajustes``.
 """
 
 import re
@@ -31,7 +34,7 @@ from django.utils import timezone
 from . import contrato
 
 
-VERSION_BASE = 2
+VERSION_BASE = 3
 MAX_DOCUMENTO = 4 * 1024 * 1024
 MAX_TOTAL = 256 * 1024 * 1024
 MAX_NOMBRE = 120
@@ -87,9 +90,50 @@ CREATE TABLE ajustes (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE INDEX ejercicios_proyecto ON ejercicios(proyecto, seccion, posicion);
 CREATE INDEX secciones_proyecto ON secciones(proyecto, posicion);
 """
-MIGRACIONES = {1: _TABLAS, 2: _MIGRACION_2}
+# v2 → v3: la organización sale de la tabla de resoluciones a «referencias» (una por ejercicio que
+# usa la resolución); proyectos abiertos, ejercicio activo de cada uno y preferencia del borrador.
+# La tabla se reconstruye (SQLite no quita columnas con REFERENCES) y la nueva se renombra después de
+# borrar la antigua: nada apunta a la antigua, así que DROP TABLE no dispara borrados en cascada.
+_MIGRACION_3 = """
+CREATE TABLE resoluciones_v3 (
+    id INTEGER PRIMARY KEY,
+    huella TEXT NOT NULL UNIQUE,
+    ruta TEXT NOT NULL,
+    herramienta TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    creado TEXT NOT NULL,
+    usado TEXT NOT NULL,
+    documento TEXT NOT NULL
+);
+INSERT INTO resoluciones_v3 (id, huella, ruta, herramienta, nombre, creado, usado, documento)
+    SELECT id, huella, ruta, herramienta, nombre, creado, usado, documento FROM resoluciones;
+CREATE TABLE referencias (
+    id INTEGER PRIMARY KEY,
+    resolucion INTEGER NOT NULL REFERENCES resoluciones_v3(id) ON DELETE CASCADE,
+    ejercicio INTEGER NOT NULL REFERENCES ejercicios(id) ON DELETE CASCADE,
+    posicion INTEGER NOT NULL DEFAULT 0,
+    incluir INTEGER NOT NULL DEFAULT 1,
+    creado TEXT NOT NULL,
+    UNIQUE (ejercicio, resolucion)
+);
+INSERT INTO referencias (resolucion, ejercicio, posicion, incluir, creado)
+    SELECT id, ejercicio, posicion, incluir, usado FROM resoluciones
+    WHERE ejercicio IN (SELECT id FROM ejercicios) ORDER BY ejercicio, posicion, id;
+DROP TABLE resoluciones;
+ALTER TABLE resoluciones_v3 RENAME TO resoluciones;
+CREATE INDEX referencias_resolucion ON referencias(resolucion);
+ALTER TABLE proyectos ADD COLUMN abierto TEXT;
+ALTER TABLE proyectos ADD COLUMN ejercicio_activo INTEGER REFERENCES ejercicios(id) ON DELETE SET NULL;
+ALTER TABLE proyectos ADD COLUMN solo_con_resolucion INTEGER NOT NULL DEFAULT 0;
+UPDATE proyectos SET abierto = creado,
+    ejercicio_activo = (SELECT e.id FROM ejercicios e JOIN ajustes a ON a.clave = 'activo_ejercicio'
+                        WHERE e.proyecto = proyectos.id AND CAST(a.valor AS INTEGER) = e.id)
+    WHERE id = (SELECT CAST(valor AS INTEGER) FROM ajustes WHERE clave = 'activo_proyecto');
+DELETE FROM ajustes WHERE clave = 'activo_ejercicio';
+"""
+MIGRACIONES = {1: _TABLAS, 2: _MIGRACION_2, 3: _MIGRACION_3}
 # Contenedor de cada elemento ordenable: se reordena solo entre sus hermanos.
-_HERMANOS = {"ejercicios": ("proyecto", "seccion"), "resoluciones": ("ejercicio",), "secciones": ("proyecto",)}
+_HERMANOS = {"ejercicios": ("proyecto", "seccion"), "referencias": ("ejercicio",), "secciones": ("proyecto",)}
 
 # Estado legible sin decodificar documentos enteros: JSON válido, contrato y versión.
 _ESTADO = f"""
@@ -102,7 +146,7 @@ _ESTADO = f"""
     END
 """
 _COLUMNAS = f"""
-    id, ruta, herramienta, nombre, ejercicio, posicion, incluir, creado, usado, {_ESTADO} AS estado,
+    id, ruta, herramienta, nombre, creado, usado, {_ESTADO} AS estado,
     CASE WHEN json_valid(documento) THEN json_extract(documento, '$.herramienta.esquema') END AS esquema,
     CASE WHEN json_valid(documento) THEN json_extract(documento, '$.resumen') END AS resumen
 """
@@ -114,6 +158,10 @@ class AlmacenNoDisponible(Exception):
 
 class AlmacenFuturo(AlmacenNoDisponible):
     """Una versión más reciente de PyGebra cambió el archivo: esta no lo modifica."""
+
+
+class Conflicto(ValueError):
+    """La operación chocaría con la integridad del cuaderno (p. ej. un ejercicio que ya no existe)."""
 
 
 class CuadernoLleno(Exception):
@@ -228,6 +276,9 @@ class Almacen:
         try:
             with closing(db), db:
                 yield db
+        except sqlite3.IntegrityError as error:
+            # Una clave que ya no existe o una ubicación repetida: nada cambió (la transacción se revierte).
+            raise Conflicto(str(error)) from error
         except sqlite3.DatabaseError as error:
             if _es_corrupcion(error):
                 # Se confirma con quick_check en la próxima apertura antes de apartar nada.
@@ -284,13 +335,60 @@ class Almacen:
         with self.conexion() as db:
             return db.executemany("DELETE FROM resoluciones WHERE id = ?", [(i,) for i in identificadores]).rowcount
 
-    def agrupar(self, identificadores, ejercicio):
-        """Mueve las resoluciones al final del ejercicio (None las deja sueltas). No borra nada."""
+    # ---- Referencias: dónde se usa cada resolución ----
+
+    def referencias(self, proyecto=..., resoluciones=None):
+        """Referencias con los metadatos de su resolución (``id`` es la resolución; ``ref``, la
+        referencia): todas, las de un proyecto (None: ejercicios independientes) o las de ciertas
+        resoluciones. En el orden de cada ejercicio."""
+        consulta = (f"SELECT f.id AS ref, f.ejercicio, f.posicion, f.incluir, r.* FROM referencias f "
+                    f"JOIN (SELECT {_COLUMNAS} FROM resoluciones) r ON r.id = f.resolucion")
+        parametros = ()
+        if resoluciones is not None:
+            consulta += f" WHERE f.resolucion IN ({','.join('?' * len(resoluciones))})"
+            parametros = tuple(resoluciones)
+        elif proyecto is not ...:
+            consulta += " WHERE f.ejercicio IN (SELECT id FROM ejercicios WHERE proyecto IS ?)"
+            parametros = (proyecto,)
         with self.conexion() as db:
-            for identificador in identificadores:
-                db.execute("UPDATE resoluciones SET ejercicio = ?, posicion = ? WHERE id = ?",
-                           (ejercicio, self._siguiente(db, "resoluciones", {"ejercicio": ejercicio}), identificador))
-            return len(identificadores)
+            return [dict(f) for f in db.execute(f"{consulta} ORDER BY f.ejercicio, f.posicion, f.id", parametros)]
+
+    def anadir(self, resoluciones, ejercicio):
+        """Una referencia nueva al final del ejercicio por resolución; si ya estaba allí, no se repite."""
+        momento = ahora()
+        with self.conexion() as db:
+            nuevas = 0
+            for resolucion in resoluciones:
+                nuevas += db.execute(
+                    "INSERT OR IGNORE INTO referencias (resolucion, ejercicio, posicion, creado)"
+                    " SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM resoluciones WHERE id = ?)",
+                    (resolucion, ejercicio, self._siguiente(db, "referencias", {"ejercicio": ejercicio}), momento,
+                     resolucion)).rowcount
+            return nuevas
+
+    def mover_referencias(self, referencias, ejercicio):
+        """(movidas, unidas). Lleva cada referencia al final de otro ejercicio con su inclusión. Si
+        allí ya estaba la misma resolución, se conserva esa y la movida se retira: nunca hay dos."""
+        movidas = unidas = 0
+        with self.conexion() as db:
+            for referencia in referencias:
+                fila = db.execute("SELECT resolucion, ejercicio FROM referencias WHERE id = ?", (referencia,)).fetchone()
+                if fila is None or fila["ejercicio"] == ejercicio:
+                    continue
+                if db.execute("SELECT 1 FROM referencias WHERE ejercicio = ? AND resolucion = ?",
+                              (ejercicio, fila["resolucion"])).fetchone():
+                    db.execute("DELETE FROM referencias WHERE id = ?", (referencia,))
+                    unidas += 1
+                else:
+                    db.execute("UPDATE referencias SET ejercicio = ?, posicion = ? WHERE id = ?",
+                               (ejercicio, self._siguiente(db, "referencias", {"ejercicio": ejercicio}), referencia))
+                    movidas += 1
+        return movidas, unidas
+
+    def desvincular(self, referencias):
+        """Quita referencias; la resolución sigue en el cuaderno y en sus demás ubicaciones."""
+        with self.conexion() as db:
+            return db.executemany("DELETE FROM referencias WHERE id = ?", [(r,) for r in referencias]).rowcount
 
     # ---- Orden, selección y ajustes ----
 
@@ -319,6 +417,45 @@ class Almacen:
             self._renumerar(db, tabla, ids)
             return destino != actual
 
+    def colocar(self, tabla, identificador, *, antes=None, despues=None, posicion=None, **contenedor):
+        """Coloca un elemento justo antes o después de otro (y en su contenedor), en una posición de
+        su contenedor (1 = la primera) o al final de ``contenedor`` (p. ej. ``seccion=3``).
+
+        Los demás conservan su orden relativo, también los que la página tenga ocultos por un
+        filtro: «antes de X» significa antes de X en el orden completo. Los ejercicios no cambian
+        de proyecto por aquí; una referencia sí puede pasar a otro ejercicio. False si no se movió.
+        """
+        campos = _HERMANOS[tabla]
+        vecino = antes if antes is not None else despues
+        with self.conexion() as db:
+            fila = db.execute(f"SELECT {', '.join(campos)} FROM {tabla} WHERE id = ?", (identificador,)).fetchone()
+            if fila is None or vecino == identificador:
+                return False
+            actual = dict(zip(campos, fila))
+            destino = actual | {campo: valor for campo, valor in contenedor.items() if campo in campos}
+            if vecino is not None:
+                otra = db.execute(f"SELECT {', '.join(campos)} FROM {tabla} WHERE id = ?", (vecino,)).fetchone()
+                if otra is None:
+                    return False
+                destino = dict(zip(campos, otra))
+            if tabla != "referencias" and destino[campos[0]] != actual[campos[0]]:
+                return False
+            condicion = " AND ".join(f"{campo} IS ?" for campo in campos)
+            ids = [f[0] for f in db.execute(f"SELECT id FROM {tabla} WHERE {condicion} AND id != ? ORDER BY posicion, id",
+                                            (*destino.values(), identificador))]
+            if vecino is not None:
+                indice = ids.index(vecino) + (antes is None)
+            elif posicion is not None:
+                indice = min(max(posicion - 1, 0), len(ids))
+            else:
+                indice = len(ids)
+            ids.insert(indice, identificador)
+            if destino != actual:
+                db.execute(f"UPDATE {tabla} SET {', '.join(f'{c} = ?' for c in campos)} WHERE id = ?",
+                           (*destino.values(), identificador))
+            self._renumerar(db, tabla, ids)
+            return True
+
     def incluir(self, tabla, identificadores, valor):
         """Marca qué entra en el borrador del documento. Excluir nunca elimina."""
         if tabla not in _HERMANOS:
@@ -326,56 +463,75 @@ class Almacen:
         with self.conexion() as db:
             db.executemany(f"UPDATE {tabla} SET incluir = ? WHERE id = ?", [(int(bool(valor)), i) for i in identificadores])
 
+    # ---- Proyectos abiertos y destino de los nuevos cálculos ----
+
     def activo(self):
-        """(proyecto, ejercicio) activos mientras se navega, o (None, None)."""
+        """(proyecto, ejercicio) que reciben los nuevos cálculos, o (None, None)."""
         with self.conexion() as db:
-            ajustes = dict(db.execute("SELECT clave, valor FROM ajustes WHERE clave LIKE 'activo_%'").fetchall())
-            proyecto = db.execute("SELECT id FROM proyectos WHERE id = ?", (ajustes.get("activo_proyecto"),)).fetchone()
-            ejercicio = db.execute("SELECT id FROM ejercicios WHERE id = ? AND proyecto IS ?",
-                                   (ajustes.get("activo_ejercicio"), proyecto and proyecto[0])).fetchone()
-        return (proyecto and proyecto[0]), (ejercicio and ejercicio[0])
+            fila = db.execute("""
+                SELECT p.id, e.id FROM ajustes a JOIN proyectos p ON p.id = CAST(a.valor AS INTEGER)
+                LEFT JOIN ejercicios e ON e.id = p.ejercicio_activo AND e.proyecto = p.id
+                WHERE a.clave = 'activo_proyecto'""").fetchone()
+        return (fila[0], fila[1]) if fila else (None, None)
 
     def trabajo_activo(self):
-        """En una sola conexión (se pide en cada página): el proyecto activo con su progreso y sus ejercicios."""
+        """En una sola conexión (se pide en cada página): los proyectos abiertos, cada uno con su
+        ejercicio activo y su progreso; el destino actual y sus ejercicios. None sin abiertos."""
         with self.conexion() as db:
-            ajustes = dict(db.execute("SELECT clave, valor FROM ajustes WHERE clave LIKE 'activo_%'").fetchall())
-            if "activo_proyecto" not in ajustes:
-                return None
-            proyecto = db.execute("""
-                SELECT p.id, p.nombre, p.objetivo,
-                       (SELECT COUNT(*) FROM ejercicios e WHERE e.proyecto = p.id) AS ejercicios,
-                       (SELECT COUNT(DISTINCT r.ejercicio) FROM resoluciones r JOIN ejercicios e ON e.id = r.ejercicio
-                        WHERE e.proyecto = p.id) AS resueltos
-                FROM proyectos p WHERE p.id = ?""", (ajustes["activo_proyecto"],)).fetchone()
-            if proyecto is None:
-                return None
-            ejercicios = [dict(f) for f in db.execute(
-                "SELECT id, nombre, numero, proyecto, seccion FROM ejercicios WHERE proyecto = ? ORDER BY posicion, id",
-                (proyecto["id"],))]
-        ejercicio = next((e for e in ejercicios if str(e["id"]) == ajustes.get("activo_ejercicio")), None)
-        return dict(proyecto), ejercicios, ejercicio
+            fila = db.execute("SELECT CAST(valor AS INTEGER) FROM ajustes WHERE clave = 'activo_proyecto'").fetchone()
+            activo = fila and fila[0]
+            abiertos = [dict(f) for f in db.execute("""
+                SELECT p.id, p.nombre, p.objetivo, e.id AS ejercicio, e.numero, e.nombre AS titulo,
+                       (SELECT COUNT(*) FROM ejercicios x WHERE x.proyecto = p.id) AS ejercicios,
+                       (SELECT COUNT(DISTINCT f.ejercicio) FROM referencias f JOIN ejercicios x ON x.id = f.ejercicio
+                        WHERE x.proyecto = p.id) AS resueltos
+                FROM proyectos p LEFT JOIN ejercicios e ON e.id = p.ejercicio_activo AND e.proyecto = p.id
+                WHERE p.abierto IS NOT NULL OR p.id IS ? ORDER BY p.abierto, p.id""", (activo,))]
+            proyecto = next((p for p in abiertos if p["id"] == activo), None)
+            ejercicios = [dict(f) for f in db.execute("""
+                SELECT e.id, e.nombre, e.numero, e.proyecto, e.seccion FROM ejercicios e
+                LEFT JOIN secciones s ON s.id = e.seccion
+                WHERE e.proyecto = ? ORDER BY s.id IS NOT NULL, s.posicion, s.id, e.posicion, e.id""",
+                (proyecto["id"],))] if proyecto else []
+            cerrados = [dict(f) for f in db.execute(
+                "SELECT id, nombre FROM proyectos WHERE abierto IS NULL AND id IS NOT ? ORDER BY nombre, id", (activo,))]
+        if not abiertos:
+            return None
+        return {"abiertos": abiertos, "proyecto": proyecto, "ejercicios": ejercicios, "cerrados": cerrados}
 
-    def activar(self, proyecto, ejercicio=None):
+    def activar(self, proyecto, ejercicio=...):
+        """Abre el proyecto y lo hace destino de los nuevos cálculos. Con ``ejercicio`` cambia su
+        ejercicio activo (None: ninguno); sin él, recupera el último en el que se trabajó."""
         with self.conexion() as db:
-            for clave, valor in (("activo_proyecto", proyecto), ("activo_ejercicio", ejercicio)):
-                if valor is None:
-                    db.execute("DELETE FROM ajustes WHERE clave = ?", (clave,))
-                else:
-                    db.execute("INSERT OR REPLACE INTO ajustes (clave, valor) VALUES (?, ?)", (clave, str(valor)))
+            if not db.execute("UPDATE proyectos SET abierto = COALESCE(abierto, ?) WHERE id = ?",
+                              (ahora(), proyecto)).rowcount:
+                return False
+            if ejercicio is not ...:
+                db.execute("UPDATE proyectos SET ejercicio_activo = (SELECT id FROM ejercicios WHERE id = ? AND proyecto = ?)"
+                           " WHERE id = ?", (ejercicio, proyecto, proyecto))
+            db.execute("INSERT OR REPLACE INTO ajustes (clave, valor) VALUES ('activo_proyecto', ?)", (str(proyecto),))
+            return True
+
+    def cerrar(self, proyecto):
+        """Lo quita de los proyectos abiertos sin eliminar nada; si era el destino, ya no hay ninguno."""
+        with self.conexion() as db:
+            db.execute("UPDATE proyectos SET abierto = NULL WHERE id = ?", (proyecto,))
+            db.execute("DELETE FROM ajustes WHERE clave = 'activo_proyecto' AND valor = ?", (str(proyecto),))
 
     # ---- Proyectos y secciones ----
 
     def proyectos(self):
-        """Cada proyecto con sus ejercicios, cuántos tienen ya una resolución y su última actividad."""
+        """Cada proyecto con sus ejercicios, cuántos tienen alguna resolución y su última actividad."""
         with self.conexion() as db:
             return [dict(f) for f in db.execute("""
-                SELECT p.id, p.nombre, p.objetivo, p.creado,
+                SELECT p.id, p.nombre, p.objetivo, p.creado, p.abierto, p.solo_con_resolucion,
                        COUNT(DISTINCT e.id) AS ejercicios,
-                       COUNT(DISTINCT r.ejercicio) AS resueltos,
+                       COUNT(DISTINCT f.ejercicio) AS resueltos,
                        COALESCE(MAX(r.usado), p.creado) AS ultima
                 FROM proyectos p
                 LEFT JOIN ejercicios e ON e.proyecto = p.id
-                LEFT JOIN resoluciones r ON r.ejercicio = e.id
+                LEFT JOIN referencias f ON f.ejercicio = e.id
+                LEFT JOIN resoluciones r ON r.id = f.resolucion
                 GROUP BY p.id ORDER BY ultima DESC, p.id DESC""")]
 
     def crear_proyecto(self, nombre, objetivo=None):
@@ -388,10 +544,17 @@ class Almacen:
             return db.execute("UPDATE proyectos SET nombre = ?, objetivo = ? WHERE id = ?",
                               (nombre[:MAX_NOMBRE], objetivo, identificador)).rowcount
 
+    def preferir_documento(self, identificador, solo_con_resolucion):
+        """El borrador lleva todos los ejercicios incluidos o solo los que tienen resoluciones incluidas."""
+        with self.conexion() as db:
+            db.execute("UPDATE proyectos SET solo_con_resolucion = ? WHERE id = ?",
+                       (int(bool(solo_con_resolucion)), identificador))
+
     def eliminar_proyecto(self, identificador):
         """Quita el proyecto y sus secciones; sus ejercicios y resoluciones siguen en el cuaderno."""
         with self.conexion() as db:
             db.execute("UPDATE ejercicios SET proyecto = NULL, seccion = NULL WHERE proyecto = ?", (identificador,))
+            db.execute("DELETE FROM ajustes WHERE clave = 'activo_proyecto' AND valor = ?", (str(identificador),))
             return db.execute("DELETE FROM proyectos WHERE id = ?", (identificador,)).rowcount
 
     def secciones(self, proyecto):
@@ -442,10 +605,10 @@ class Almacen:
                 (nombre[:MAX_NOMBRE], proyecto, seccion, numero, enunciado, posicion, ahora())).lastrowid
 
     def crear_ejercicios(self, proyecto, numeros, seccion=None):
-        """Ejercicios vacíos numerados, preparados antes de resolverlos (p. ej. del 1 al 64)."""
+        """Ejercicios vacíos numerados, preparados antes de resolverlos (p. ej. del 1 al 20)."""
         with self.conexion() as db:
             existentes = {f[0] for f in db.execute("SELECT numero FROM ejercicios WHERE proyecto = ?", (proyecto,))}
-            nuevos = [n for n in numeros if n not in existentes]
+            nuevos = [n for n in dict.fromkeys(numeros) if n not in existentes]
             posicion = self._siguiente(db, "ejercicios", {"proyecto": proyecto, "seccion": seccion})
             momento = ahora()
             db.executemany(
@@ -459,15 +622,19 @@ class Almacen:
                               (nombre[:MAX_NOMBRE], numero, enunciado, identificador)).rowcount
 
     def ubicar_ejercicios(self, identificadores, proyecto, seccion=None):
-        """Lleva ejercicios a un proyecto o sección (None: independientes), al final y con sus resoluciones."""
+        """Lleva ejercicios a un proyecto o sección (None: independientes), al final, en su orden
+        actual y con sus referencias. Un proyecto que deja de contener su ejercicio activo lo olvida."""
         with self.conexion() as db:
-            for identificador in identificadores:
+            marcas = ",".join("?" * len(identificadores))
+            ordenados = [f[0] for f in db.execute(
+                f"SELECT id FROM ejercicios WHERE id IN ({marcas}) ORDER BY proyecto, seccion, posicion, id", identificadores)]
+            for identificador in ordenados:
                 db.execute("UPDATE ejercicios SET proyecto = ?, seccion = ?, posicion = ? WHERE id = ?",
                            (proyecto, seccion, self._siguiente(db, "ejercicios", {"proyecto": proyecto, "seccion": seccion}),
                             identificador))
-            if proyecto is None:
-                db.execute("DELETE FROM ajustes WHERE clave = 'activo_ejercicio' AND valor IN ({})".format(
-                    ",".join("?" * len(identificadores))), [str(i) for i in identificadores])
+            db.execute(f"UPDATE proyectos SET ejercicio_activo = NULL WHERE ejercicio_activo IN ({marcas}) AND id IS NOT ?",
+                       (*identificadores, proyecto))
+            return len(ordenados)
 
     def ordenar_por_numero(self, proyecto):
         """Reordena cada sección del proyecto por número natural; sin número, al final y en su orden."""
@@ -482,15 +649,11 @@ class Almacen:
         with self.conexion() as db:
             return db.execute("SELECT 1 FROM ejercicios WHERE id = ?", (identificador,)).fetchone() is not None
 
-    def renombrar_ejercicio(self, identificador, nombre):  # Compatibilidad con el cuaderno v1.
+    def eliminar_ejercicios(self, identificadores):
+        """Quita ejercicios (número, título y enunciado) y sus referencias. Las resoluciones siguen en
+        el cuaderno: sueltas si no se usan en otro ejercicio."""
         with self.conexion() as db:
-            return db.execute("UPDATE ejercicios SET nombre = ? WHERE id = ?",
-                              (nombre[:MAX_NOMBRE], identificador)).rowcount
-
-    def disolver_ejercicio(self, identificador):
-        """Quita el ejercicio; sus resoluciones vuelven a «Sueltas» (ON DELETE SET NULL)."""
-        with self.conexion() as db:
-            return db.execute("DELETE FROM ejercicios WHERE id = ?", (identificador,)).rowcount
+            return db.executemany("DELETE FROM ejercicios WHERE id = ?", [(i,) for i in identificadores]).rowcount
 
 
 _ALMACENES = {}
