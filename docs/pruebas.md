@@ -51,7 +51,7 @@ El job `navegador` (Ubuntu, Chrome) ejecuta un runner por área prioritaria:
 | Métodos iterativos | `iterativos` |
 | Conjuntos | `conjuntos` |
 | Independencia lineal | `independencia` |
-| Cuaderno de resoluciones | `resoluciones` (cinco estilos, claro y oscuro, móvil y sin JavaScript) |
+| Cuaderno de resoluciones | `resoluciones` (organizar por rangos, arrastre y teclado, contexto conservado, cinco estilos, claro y oscuro, móvil y sin JavaScript) |
 
 Quedan fuera por coste o solapamiento, y se ejecutan a mano cuando su área
 cambia: `resultado` (184 s, el más lento; cubre Exacto/Decimal como `claridad`),
