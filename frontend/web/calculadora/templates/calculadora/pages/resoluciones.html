@@ -68,7 +68,7 @@
                                 <span class="proyecto-tarjeta-nombre">{{ p.nombre }}</span>
                                 {% if p.activo %}<span class="badge proyecto-activo-insignia">Activo</span>{% endif %}
                             </a>
-                            <p class="proyecto-tarjeta-detalle">{{ p.progreso.resueltos }} de {{ p.progreso.total }} ejercicio{{ p.progreso.total|pluralize }} con resolución{% if p.fecha %} · <time datetime="{{ p.ultima }}">{{ p.fecha|date:"j \d\e F" }}</time>{% endif %}</p>
+                            <p class="proyecto-tarjeta-detalle">{{ p.progreso.resueltos }} de {{ p.progreso.total }} ejercicio{{ p.progreso.total|pluralize }} con alguna resolución{% if p.fecha %} · <time datetime="{{ p.ultima }}">{{ p.fecha|date:"j \d\e F" }}</time>{% endif %}</p>
                             <progress class="progreso" max="{{ p.progreso.total|default:1 }}" value="{{ p.progreso.resueltos }}" aria-label="Progreso de {{ p.nombre }}">{{ p.progreso.porcentaje }} %</progress>
                         </li>
                     {% endfor %}
@@ -152,7 +152,7 @@
                 {% endif %}
             {% endif %}
 
-            {% if total and not filtrando or coincidencias %}{% include "calculadora/pages/_barra_seleccion.html" %}{% endif %}
+            {% if sueltas or ejercicios or coincidencias %}{% include "calculadora/pages/_barra_seleccion.html" %}{% endif %}
         </form>
 
         {# Formularios de una sola acción, fuera de la selección: renombrar y editar. #}

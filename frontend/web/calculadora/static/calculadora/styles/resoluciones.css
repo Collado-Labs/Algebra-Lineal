@@ -1230,3 +1230,5 @@ a.mapa-celda[data-estado="resuelto"]:hover { color: var(--color-brand-text); fil
     .ejercicio-cabecera > .hoja-controles { grid-column: 3; padding-left: 0.85rem; }
     .proyecto-organizar-numeros { flex-basis: 100%; }
 }
+
+.cuaderno-destino > span { white-space: nowrap; }
